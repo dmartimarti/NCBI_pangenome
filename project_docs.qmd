@@ -15,7 +15,9 @@ The partition of the existing bacteria into biological units have been debated o
 
 ## Results
 
-### Strain selection
+### Filtering strains to be analysed
+
+#### Contigs and Scaffold status
 
 ```{r}
 #| warning: false
@@ -27,63 +29,160 @@ library(readr)
 library(readxl)
 library(cowplot)
 library(viridis)
+library(patchwork)
 
 theme_set(theme_cowplot(14))
 
 ```
 
-Strain information has been downloaded from the BV-BRC database (https://www.bv-brc.org/), by allowing good quality genomes complete or WGS. Looking at the general distribution of contigs per genome, we can see that we have a high peak at 10 or less contigs, and then a bell shape for the rest with a long tail, reaching to a max count of 999 contigs.
+Strain information has been downloaded from NCBI genomes. The metadata was downloaded on January 11th 2024. To reduce the number of E. coli genomes, the assembly level allowed was only for the types of "chromosome", "complete genome" or "scaffold". We can have a look at parameters such as the contig_n50/scaffold_n50 to see how the distribution of contigs looks like in the full cohort. We can see two different peaks, one near 0 that represents all the assemblies that have multiple contigs, and another around 5 megabases
 
 ```{r}
 #| warning: false
 #| label: metadata-load
 #| cache: true
-metadata = read_xlsx('BVBRC_genome.xlsx')
+metadata = read_xlsx('ecoli_ncbi_metadata.xlsx')
 
-contig_bins = seq(0, 1000, 10)
-
-metadata %>%  
-  mutate(bins = cut(contigs, 
-                    breaks = contig_bins)) %>% 
-  ggplot(aes(contigs, fill = bins)) +
-  geom_histogram(binwidth = 5, show.legend = F)  +
-  scale_fill_viridis(discrete = T) +
-  geom_vline(xintercept = 10) +
-  theme_cowplot(14)
+metadata = metadata %>% 
+  distinct(assembly_name, .keep_all = T)
 ```
 
-We need to filter the bad quality genomes from the cohort, which we can start doing by filtering out by checkM metricsL:
+```{r}
+#| warning: false
+#| label: scaffold_metadata
+#| cache: true
 
--   **checkM completeness**: the value that is usually applied ranges from 70%, but I'll be using a more strict value of 90% because I want to have full genomes when possible.
+metadata %>% 
+  ggplot(aes(contig_n50)) +
+  geom_histogram(binwidth = 10000) +
+  scale_x_continuous(labels = scales::comma) +
+  labs(x = "Contig N50", y = "Number of genomes") +
+  theme_cowplot(14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
 
--   **checkM contamination**: I am applying a value of 5% max contamination to avoid getting false information.
 
-However, as we can also see in the next tables, we still lack quite a lot of information from checkM from the metadata.
+# plot distribution of scaffold_n50
+metadata %>% 
+  ggplot(aes(scaffold_n50)) +
+  geom_histogram(binwidth = 10000) +
+  scale_x_continuous(labels = scales::comma) +
+  labs(x = "Scaffold N50", y = "Number of genomes") +
+  theme_cowplot(14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
 
-For example, focusing on the checkM completeness, we would discard 7 strains, but we still lack information from 10813 strains. And focusing on the checkM contamination, we would discard 292 but we also lack information from 16694 strains. Something very important to take into account in this filtering, is that we are removing all the strains that don't have an NCBI accession number.
+It is even more evident that there are huge differences in terms of the scaffold N50 parameter in respect to their assembly level. As expected, we have a greater count of scaffold at chromosome or complete genome level compared to scaffold. The assemblies from the first two categories will be included, and now we need to include a threshold for the last category to remove strains with low scaffold N50.
+
+```{r}
+#| warning: false
+#| cache: true
+# plot scaffold distribution by assembly level with violin plot
+metadata %>% 
+  ggplot(aes(assembly_level, scaffold_n50, fill = assembly_level)) +
+  geom_violin(show.legend = F) +
+  # plot mean and sd as pointrange
+  stat_summary(fun.data = mean_sdl, geom = "pointrange", 
+               fun.args = list(mult = 1), color = "black",
+               show.legend = F) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "Assembly level", y = "Scaffold N50") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_viridis(discrete = T, begin = 0.2, end = 0.8) +
+  theme_cowplot(14)
+
+```
+
+When we filter out the complete categories and then show the distribution of the scaffold N50, we have this distribution:
 
 ```{r}
 #| warning: false
 #| cache: true
 
-metadata %>% 
-  drop_na(assembly) %>% 
-  mutate(checkM_completeness_class = 
-           case_when(is.na(checkM_completeness) ~ 'NA',
-                     checkM_completeness < 90 ~ "< 90%",
-                     checkM_completeness >= 90 ~ ">= 90%")) %>% 
-  count(checkM_completeness_class) %>% print
+# show scaffold distribution of assembly_level == scaffold
+p1 = metadata %>% 
+  filter(assembly_level == 'Scaffold') %>% 
+  ggplot(aes(scaffold_n50)) +
+  geom_histogram(binwidth = 10000) +
+  scale_x_continuous(labels = scales::comma) +
+  labs(x = "Scaffold N50", y = "Number of genomes") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme_cowplot(14)
 
-metadata %>% 
-  drop_na(assembly) %>% 
-  mutate(checkM_contamination_class = 
-           case_when(is.na(checkM_contamination) ~ 'NA',
-                     checkM_contamination > 5 ~ "> 5%",
-                     checkM_contamination <= 5 ~ "<= 5%")) %>% 
-  count(checkM_contamination_class) %>% print
+p2 = metadata %>% 
+  filter(assembly_level == 'Scaffold') %>%
+  filter(scaffold_n50 < 500000) %>% 
+  ggplot(aes(scaffold_n50)) +
+  geom_histogram(binwidth = 10000) +
+  scale_x_continuous(labels = scales::comma) +
+  labs(x = "Scaffold N50", y = "Number of genomes") +
+  theme_cowplot(14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
 
+
+# show them with patchwork
+p1 + p2
+
+metadata_filt = metadata %>% filter(scaffold_n50 > 100000)
+dims = dim(metadata_filt)
+dims[1]
 ```
 
-The solution here is easy, I have to download every strain from the metadata and run checkM on them to evaluate their completeness and contamination stats.
+From the distribution of the scaffold N50 values, we can safely chose a threshold of \~ 150K as that will leave out E. coli assemblies that have a high amount of contigs/scaffolds.
 
-But, there is also another problem with this dataset, we lack the assembly name from \~8K genomes. First of all, I will try to get the assembly names from the bioprojects in the metadata, and then I will download the genomes.
+**In summary:** we are choosing a threshold of 150K for the scaffold_n50 parameter from now on. Anything below that will be discarded.
+
+After this filtering step we have `{r} dims[1]` genomes left.
+
+#### CheckM filters
+
+We need to filter the bad quality genomes from the cohort, which we can start doing by filtering out by checkM metricsL:
+
+-   **checkM completeness**: the value that is usually applied ranges from 70%, but I'll be using a more strict value of 95% because I want to have full genomes when possible.
+
+-   **checkM contamination**: I am applying a value of 1% max contamination to avoid getting false information regarding the gene content.
+
+```{r}
+#| warning: false
+#| cache: true
+
+metadata_filt %>% 
+  mutate(checkM_completeness_class = 
+           case_when(is.na(checkM_completeness) ~ 'NA',
+                     checkM_completeness < 95 ~ "< 95%",
+                     checkM_completeness >= 95 ~ ">= 95%")) %>% 
+  count(checkM_completeness_class) %>% print
+
+metadata_filt %>% 
+  mutate(checkM_contamination_class = 
+           case_when(is.na(checkM_contamination) ~ 'NA',
+                     checkM_contamination > 1 ~ "> 1%",
+                     checkM_contamination <= 1 ~ "<= 1%")) %>% 
+  count(checkM_contamination_class) %>% print
+
+
+metadata_filt = metadata_filt %>% 
+  filter(checkM_completeness > 95,
+         checkM_contamination < 1) %>% 
+  filter(seq_length < 7000000)
+
+dim_filt = metadata_filt %>% dim
+```
+
+**In summary**, if we apply both filters, we are left with **`{r} dim_filt[1]` genomes**. Now we need to download these genomes and start the functional analysis. I have also filtered out genomes with a sequence length greater than 7Mbp as I consider them to be outliers.
+
+Summarising all the filtering steps I have performed:
+
+1.  filtered out genomes with a scaffold N50 lower than 150K.
+
+2.  filtered out genomes with a checkM completeness lower than 95%.
+
+3.  filtered out genomes with a checkM contamination higher than 1%.
+
+4.  filtered out genomes with a sequence length greater than 7Mbp.
+
+## Methods
+
+### E. coli strain selection
+
+The E. coli strains were selected from the NCBI genome database. The metadata was downloaded on January 11th 2024. The strains were filtered based on the following criteria: genomes that were not at the assembly level of "chromosome", "complete genome" or "scaffold" were removed. The scaffold N50 was used to filter out genomes with a value lower than 150K. The checkM metrics were used to filter out genomes with a completeness lower than 95% and a contamination higher than 1%. Finally, genomes with a sequence length greater than 7Mbp were removed.
+

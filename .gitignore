@@ -50,3 +50,7 @@ rsconnect/
 
 .DS_Store
 
+# folders from quarto documents
+
+/project_docs_files
+/project_docs_files/figure-html
