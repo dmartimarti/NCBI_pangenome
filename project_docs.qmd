@@ -1,6 +1,8 @@
 ---
 title: "Navigating the E. coli functional landscape"
 author: "Daniel Martinez-Martinez, Filipe Cabreiro"
+bibliography: references.bib
+csl: nature.csl
 format:
   html:
     df-print: paged
@@ -45,6 +47,13 @@ metadata = read_xlsx('ecoli_ncbi_metadata.xlsx')
 
 metadata = metadata %>% 
   distinct(assembly_name, .keep_all = T)
+
+metadata = metadata %>% 
+  # remove the string after the dot in assembly_id
+  mutate(assembly_id_simp = str_remove(assembly_id, "\\..*"),
+         .before = "assembly_name")
+
+metadata
 ```
 
 ```{r}
@@ -97,6 +106,7 @@ When we filter out the complete categories and then show the distribution of the
 ```{r}
 #| warning: false
 #| cache: true
+#| fig.cap: "Left: Distribution of scaffold N50 in the full cohort. Right: Distribution of scaffold N50 in the filtered cohort with a threshold of 150K."
 
 # show scaffold distribution of assembly_level == scaffold
 p1 = metadata %>% 
@@ -165,10 +175,71 @@ metadata_filt = metadata_filt %>%
          checkM_contamination < 1) %>% 
   filter(seq_length < 7000000)
 
-dim_filt = metadata_filt %>% dim
+
 ```
 
-**In summary**, if we apply both filters, we are left with **`{r} dim_filt[1]` genomes**. Now we need to download these genomes and start the functional analysis. I have also filtered out genomes with a sequence length greater than 7Mbp as I consider them to be outliers.
+Finally, after calculating the number of contigs per assembly, I have seen that some of them have a high number of contigs, which is not a good sign for the quality of the assembly. I have decided to filter out genomes with more than 300 contigs.
+
+```{r}
+#| warning: false
+#| cache: true
+#| label: contig_number
+#| fig.cap: "Left: Distribution of contig number in the filtered cohort. Right: Distribution of contig number in the filtered cohort with a threshold of 300 contigs."
+
+metadata_filt = read_csv("tables/ecoli_ncbi_metadata_filt.csv")
+
+p1 = metadata_filt %>% 
+  # filter(Contig_number < 500) %>% 
+  ggplot(aes(Contig_number)) +
+  geom_histogram(binwidth = 1) +
+  scale_x_continuous(labels = scales::comma) +
+  labs(x = "Number of contigs", y = "Number of genomes") +
+  theme_cowplot(14)
+
+p2 = metadata_filt %>% 
+  filter(Contig_number < 300) %>% 
+  ggplot(aes(Contig_number)) +
+  geom_histogram(binwidth = 1) +
+  scale_x_continuous(labels = scales::comma) +
+  labs(x = "Number of contigs", y = "Number of genomes") +
+  theme_cowplot(14)
+
+p1 + p2
+
+metadata_filt = metadata_filt %>% 
+  filter(Contig_number < 300)
+```
+
+Another filter that I have applied is using the phylogroup characterization of the strains with the tool EzClermont @Waters2020. As we can see in the next plot with the phylogroup distributions, we have some that failed or that belong to cryptic groups. I have discarded these.
+
+```{r}
+#| warning: false
+#| cache: true
+
+phylogroups = read_tsv("tables/phylogroups_ezclermont.tsv",
+         col_names = F) %>% 
+  rename(genome_id = `X1`,
+         phylogroup = `X2`) %>% 
+  mutate(assembly_id = str_sub(genome_id, 1, 15))
+
+phylogroups %>% 
+  ggplot(aes(phylogroup, fill = phylogroup)) +
+  geom_bar(show.legend = F) +
+  labs(x = "Phylogroup", y = "Number of genomes") +
+  theme_cowplot(14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+#| warning: false
+#| cache: false
+#| label: final_metadata 
+
+library(tidyverse)
+metadata_final = read_csv("tables/MAIN_ecoli_NCBI_metadata.csv") 
+
+dim_filt = metadata_final %>% dim
+```
 
 Summarising all the filtering steps I have performed:
 
@@ -180,9 +251,65 @@ Summarising all the filtering steps I have performed:
 
 4.  filtered out genomes with a sequence length greater than 7Mbp.
 
+5.  filtered out genomes with a contig number higher than 300.
+
+6.  filtered out genomes that had a higher mash difference than 0.05.
+
+7.  filtered out genomes that were not classified as one of the main E. coli phylogroups
+
+### Lab strains
+
+In addition to the strains from the NCBI database, I have included the strains we are using in our lab. These strains are not part of the NCBI database, so they are not included in the filtering steps. In total we are adding 729 strains that belong also to the normal phylogroups as before. 
+
+### Final number of strains
+
+**In summary**, if we apply all filters, we are left with **`{r} dim_filt[1]` genomes**.
+
+### Filtering strains to be analysed
+
+The distribution of the different phylogroups represented in the E. coli cohort follow a similar trend as in other research publications [@touchon2020]. The phylogroup B1 is the most represented, followed by phylogroup A and B2. The rest of the phylogroups are less represented, with phylogroup U being the least represented.
+
+```{r}
+#| warning: false
+#| cache: true
+#| label: phylogroup_plot
+
+phylo_colors = c("A" = "#1b9e77",
+                 "B1" = "#d95f02",
+                 "B2" = "#7570b3",
+                 "D" = "#e7298a",
+                 "E" = "#66a61e",
+                 "F" = "#e6ab02",
+                 "G" = "#a6761d",
+                 "C" = "#3A254D",
+                 "U" = "#666666")
+
+metadata_final %>% 
+  ggplot(aes(phylogroup, fill = phylogroup)) +
+  geom_bar(show.legend = F) +
+  labs(x = "Phylogroup", y = "Number of genomes") +
+  scale_fill_manual(values = phylo_colors) +
+  theme_cowplot(14) 
+
+```
+
 ## Methods
 
 ### E. coli strain selection
 
-The E. coli strains were selected from the NCBI genome database. The metadata was downloaded on January 11th 2024. The strains were filtered based on the following criteria: genomes that were not at the assembly level of "chromosome", "complete genome" or "scaffold" were removed. The scaffold N50 was used to filter out genomes with a value lower than 150K. The checkM metrics were used to filter out genomes with a completeness lower than 95% and a contamination higher than 1%. Finally, genomes with a sequence length greater than 7Mbp were removed.
+The E. coli strains were selected from the NCBI genome database. The metadata was downloaded on January 11th 2024. The strains were filtered based on the following criteria: genomes that were not at the assembly level of "chromosome", "complete genome" or "scaffold" were removed. The scaffold N50 was used to filter out genomes with a value lower than 150K. The checkM metrics were used to filter out genomes with a completeness lower than 95% and a contamination higher than 1%. Mash distances were calculated pairwise between all genomes, and those distances that were higher than 0.05 were removed. Finally, genomes with a sequence length greater than 7Mbp, and/or genomes with a contig count higher than 300 were removed. Genomes were dowloaded with the NCBI dataset download tool (v. 16.2.0). The final number of genomes was `{r} dim_filt[1]`.
 
+### Gene annotation and pangenome analysis
+
+The gene annotation was performed with Bakta (v. 1.9.3) using the full database (v. 5.1) and by default parameters. E. coli phylogroups were determined with EzClermont (v. 0.7.0) @Waters2020 based on the approach from CermonTyping @Beghain2018. Genomes that did not classify into the main E. coli phylogroups or that were cryptic were discarded for following analyses.
+
+## Software used and versions
+
+-   R version 4.3.2
+-   NCBI dataset download tool v. 16.2.0
+-   Bakta v. 1.9.3
+-   Panaroo v. 1.5.0
+-   mash v. 1.1
+-   EzClermont v. 0.7.0
+
+## 
