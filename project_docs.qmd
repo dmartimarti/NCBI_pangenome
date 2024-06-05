@@ -259,7 +259,7 @@ Summarising all the filtering steps I have performed:
 
 ### Lab strains
 
-In addition to the strains from the NCBI database, I have included the strains we are using in our lab. These strains are not part of the NCBI database, so they are not included in the filtering steps. In total we are adding 729 strains that belong also to the normal phylogroups as before. 
+In addition to the strains from the NCBI database, I have included the strains we are using in our lab. These strains are not part of the NCBI database, so they are not included in the filtering steps. In total we are adding 729 strains that belong also to the normal phylogroups as before.
 
 ### Final number of strains
 
@@ -311,5 +311,6 @@ The gene annotation was performed with Bakta (v. 1.9.3) using the full database 
 -   Panaroo v. 1.5.0
 -   mash v. 1.1
 -   EzClermont v. 0.7.0
+-   PPanGGOLiN v. 2.0.5
 
 ## 

@@ -74,8 +74,17 @@ bakta --db /rds/general/project/lms-cabreiro-analysis/live/bakta_db/db/ --verbos
 mv $WORK/bakta_annot/$GENOME_NAME/*.gff3 $WORK/bakta_annot/gff3_files/$GENOME_NAME.gff3
 rm -r $WORK/bakta_annot/$GENOME_NAME
 
-###
-# change every .fasta file into a .fna file
+### --------------------------
+# compress the bakta folder into a gz file with pigz
+
+#PBS -l walltime=6:0:0
+#PBS -l select=1:ncpus=24:mem=24gb
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/genomes/bakta_annot
+
+# compress the folder into a gz file with 20 threads and keep the original folder
+tar --use-compress-program="pigz -k -p 20" -cf $WORK/gff3_files.tar.gz $WORK/gff3_files
+
 
 
 ## calculate pairwise mash distances for all genomes
@@ -110,6 +119,22 @@ WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/genomes
 ls $WORK/genomes_*/*.fna | parallel -j24 "ezclermont {} 1>> $WORK/phylogroups_ezclermont.txt  2>> $WORK/results.log"
 
 
+### run PPanGGOLiN
+
+# make a table with the genome names and their path
+find $PWD -type f -name "*.fna.gff3" | awk -v OFS="\t" -F/ '{ print substr($NF, 1, length($NF)-9), $0 }' > genomes.gbff.txt
+
+
+#PBS -l walltime=48:0:0
+#PBS -l select=1:ncpus=32:mem=150gb
+
+module load anaconda3/personal
+source activate ppanggo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/genomes/bakta_annot/gff3_files
+OUT=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli
+
+ppanggolin all --anno $WORK/genomes.gbff.txt --output $OUT/ppanggolin_results -c 32 --verbose 1 -f
 
 
 ###
@@ -117,3 +142,156 @@ ls $WORK/genomes_*/*.fna | parallel -j24 "ezclermont {} 1>> $WORK/phylogroups_ez
 
 # python contig_count.py /rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/genomes/genomes_2 && mv contig_count.csv contig_genomes_2.csv
 #
+find $PWD -type f -name "*.fna.gff3" | awk -v OFS="\t" -F/ '{ print substr($NF, 1, length($NF)-9), $0 }' > genomes.gbff.txt
+ppanggolin all --anno genomes.gbff.txt --output ppanggolin_results -c 2 --verbose 2 -f
+
+# IMPORTANT, READ HERE
+# IMPORTANT, READ HERE
+# IMPORTANT, READ HERE
+# IMPORTANT, READ HERE
+# IMPORTANT, READ HERE
+# IMPORTANT, READ HERE
+# IMPORTANT, READ HERE
+# IMPORTANT, READ HERE
+# IMPORTANT, READ HERE
+# IMPORTANT, READ HERE
+
+# some of the gff files have non-ASCII characters that are causing ppanggolin to crash
+# for example:
+LC_ALL=C grep -n -P [$'\x80'-$'\xFF'] AUS_30.fna.gff3
+
+# this will show that the file AUS_30.fna.gff3 has non-ASCII characters
+
+# 1776:contig_13	Prodigal	CDS	25409	25765	.	-	0	ID=FBPPNK_08630;Name=putative DNA-binding protein with ???double-wing??? 
+# structural motif%2C MmcQ/YjbR family;locus_tag=FBPPNK_08630;product=putative DNA-binding protein with ???double-wing??? structural motif%2C 
+# MmcQ/YjbR family;Dbxref=COG:COG2315,COG:K,RefSeq:WP_000153726.1,SO:0001217,UniParc:UPI0002185663,UniRef:UniRef100_A0A066SY50,UniRef:UniRef50_P0AF51,UniRef:UniRef90_A0A234IDG1;
+# gene=mmcQ
+
+# gff3 files can be fixed by removing the non-ASCII characters with this command:
+for file in *.gff3; do
+  LC_ALL=C tr -cd '\0-\177' < "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+done
+
+
+
+
+
+### ppanggolin with annotation ------------------------
+
+find $PWD -type f -name "*.fna" | awk -v OFS="\t" -F/ '{ print substr($NF, 1, length($NF)-4), $0 }' > genomes.gbff.txt
+
+
+#PBS -l walltime=72:0:0
+#PBS -l select=1:ncpus=32:mem=196gb
+
+module load anaconda3/personal
+source activate ppanggo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/genomes/genomes_assemblies
+OUT=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli
+
+ppanggolin all --fasta $WORK/genomes.gbff.txt --output $WORK/ppanggolin_annot_results -c 32 --verbose 2 -f
+
+
+
+### panaroo script --------------------------
+
+#PBS -l walltime=72:0:0
+#PBS -l select=1:ncpus=32:mem=196gb
+
+module load anaconda3/personal
+source activate ppanggo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/genomes/bakta_annot/gff3_files
+OUT=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/genomes
+
+panaroo -i $WORK/*.gff3 -o $OUT/panaroo_results --clean-mode strict -t 32 --remove-invalid-genes -a core
+
+
+
+
+### PPanGGOLiN graph --------------------------
+
+#PBS -l walltime=24:0:0
+#PBS -l select=1:ncpus=24:mem=296gb
+
+module load anaconda3/personal
+source activate ppanggo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/ppanggolin_results
+
+ppanggolin graph -p $WORK/pangenome.h5
+
+
+
+
+### PPanGGOLiN partition --------------------------
+
+#PBS -l walltime=24:0:0
+#PBS -l select=1:ncpus=24:mem=296gb
+
+module load anaconda3/personal
+source activate ppanggo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/ppanggolin_results
+
+ppanggolin partition -p $WORK/pangenome.h5 -c 24 --draw_ICL -o $WORK/partition_results --verbose 2
+
+
+### PPanGGOLiN partition --------------------------
+
+#PBS -l walltime=24:0:0
+#PBS -l select=1:ncpus=12:mem=296gb
+
+module load anaconda3/personal
+source activate ppanggo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/ppanggolin_results
+
+ppanggolin rgp -p $WORK/pangenome.h5 -c 12 -o $WORK/rpg_results --verbose 1
+
+ppanggolin spot -p $WORK/pangenome.h5 -c 12 --spot_graph --graph_formats gexf -o $WORK/spot_results --verbose 1
+
+
+### PPanGGOLiN module --------------------------
+#PBS -l walltime=24:0:0
+#PBS -l select=1:ncpus=12:mem=146gb
+
+module load anaconda3/personal
+source activate ppanggo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/ppanggolin_results
+
+ppanggolin module -p $WORK/pangenome.h5 -c 12 --verbose 1
+
+
+
+
+
+
+### PPanGGOLiN draw --------------------------
+#PBS -l walltime=24:0:0
+#PBS -l select=1:ncpus=12:mem=96gb
+
+module load anaconda3/personal
+source activate ppanggo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/ppanggolin_results
+
+ppanggolin draw -p $WORK/pangenome.h5 --tile_plot --draw_spots --ucurve -o $WORK/draw_results --verbose 1
+
+
+
+
+### PPanGGOLiN stats --------------------------
+
+#PBS -l walltime=24:0:0
+#PBS -l select=1:ncpus=16:mem=96gb
+
+module load anaconda3/personal
+source activate ppanggo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/ppanggolin_results
+
+ppanggolin write_pangenome -p $WORK/pangenome.h5 -c 16 -o $WORK/stats_results --verbose 1 --gexf --json --csv --Rtab  --stats \
+    --partitions --families_tsv --regions --spots --modules --spot_modules
