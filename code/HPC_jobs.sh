@@ -295,3 +295,16 @@ WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/ppanggolin_resul
 
 ppanggolin write_pangenome -p $WORK/pangenome.h5 -c 16 -o $WORK/stats_results --verbose 1 --gexf --json --csv --Rtab  --stats \
     --partitions --families_tsv --regions --spots --modules --spot_modules
+
+
+### PPanGGOLiN MSA --------------------------
+
+#PBS -l walltime=72:0:0
+#PBS -l select=1:ncpus=32:mem=596gb
+
+module load anaconda3/personal
+source activate ppanggo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/ppanggolin_results
+
+ppanggolin msa -p $WORK/pangenome.h5 -c 32 -o $WORK/msa --verbose 1 --partition persistent
