@@ -12,7 +12,7 @@ from tqdm import tqdm
 path = sys.argv[1]
 
 # function that takes the path to the folder and returns a table with the contig number per genome
-def contig_count(path):
+def get_contig_count(path):
     # create an empty list to store the results
     results = []
     # loop through all the files in the folder
@@ -36,7 +36,7 @@ def contig_count(path):
     return df
 
 # function to plot a histogram of the contig number
-def plot_histogram(df):
+def generate_contig_histogram(df):
 
     plt.hist(df["Contig_number"], bins=50)
     plt.xlabel("Contig number")
@@ -48,5 +48,5 @@ def plot_histogram(df):
 # run the functions
 if __name__ == "__main__":
     print("Running contig count\n")
-    df = contig_count(path)
-    plot_histogram(df)
+    df = get_contig_count(path)
+    generate_contig_histogram(df)
