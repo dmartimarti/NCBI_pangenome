@@ -421,3 +421,257 @@ ggsave("exploration/phylogroup_distribution.pdf", width = 6, height = 4)
 
 
 
+# PANGENOME ---------------------------------------------------------------
+
+
+# Gene P/A ----------------------------------------------------------------
+
+# read the gene presence absence matrix
+
+gene_pa = read_delim("data/panaroo_results/gene_presence_absence.Rtab", 
+           delim = "\t", escape_double = FALSE, 
+           trim_ws = TRUE)
+
+names(gene_pa)[2:length(names(gene_pa))] %>% 
+  as_tibble() %>%
+  mutate(value = str_replace(value, ".fna", ""),
+         # remove anything after the first dot when the string starts with GCA
+         value = str_remove(value, "\\..*")
+         ) %>%
+  # save a txt
+  write_delim("tables/genome_names.txt", delim = "\n")
+
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ## 
+## IMPORTANT: I HAVE FIXED THE NAMES, LOAD THEM FROM THIS FILE ### ###
+### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ### ## 
+
+genome_names = read_csv("tables/genome_names.txt")
+
+# transpose the data frame
+gene_pa_t = gene_pa %>% 
+  column_to_rownames("Gene") %>%
+  t() %>%
+  as_tibble() %>% 
+  mutate(genome = genome_names$value,
+         .before = "envZ")
+
+# change the column names to genome names
+names(gene_pa) = c("Gene", gene_pa_t$genome)
+
+
+gene_pa_t %>%
+  write_csv("tables/gene_pa_matrix.csv")
+
+# save in Rtab format
+
+gene_pa %>% 
+  write_delim("tables/gene_pa_matrix.Rtab", delim = "\t")
+
+
+## cummulative gene presence absence
+
+gene_presence = gene_pa %>% 
+  select(-Gene) %>% 
+  as.matrix() %>% 
+  rowSums()
+
+
+gene_presence  = tibble(Gene = gene_pa$Gene,
+       gene_presence = gene_presence) %>% 
+  mutate(gene_prop = gene_presence / (ncol(gene_pa) - 1))
+
+gene_presence %>% 
+  write_csv("tables/gene_presence_proportion.csv")
+
+gene_presence %>% 
+  ggplot(aes(gene_prop)) +
+  geom_histogram(binwidth = 0.01, fill = "darkblue") +
+  labs(
+    x = "Proportion of genomes with gene",
+    y = "Number of genes"
+  ) 
+
+ggsave("exploration/gene_presence_proportion.pdf", width = 7, height = 5)
+
+
+## PCA of P/A matrix -----------------------------------------------------
+
+# the PCA has been calculated in Python and saved 
+
+# load the PCA results
+
+pca_data = read_delim("tables/PCA_gene_pa_matrix.tsv", 
+           delim = "\t", escape_double = FALSE, 
+           trim_ws = TRUE) %>% 
+  rename(assembly_id_simp = `...1`) %>% 
+  left_join(metadata)
+
+
+
+pca_data %>% 
+  drop_na(assembly_id_simp) %>% 
+  left_join(phylogroups) %>%
+  ggplot(aes(PC1, PC2, color = phylogroup)) +
+  geom_point() 
+
+
+pca_data %>% 
+  ggplot(aes(PC1, PC2, color = phylogroup,
+             fill = phylogroup)) +
+  stat_ellipse(type = 't',
+               geom  = 'polygon',
+               alpha = 0.2) +
+  geom_point(alpha = 0.8) +
+  scale_color_manual(values = phylo_colors) +
+  scale_fill_manual(values = phylo_colors) +
+  ggrepel::geom_text_repel(
+    data = phylo_centroids,
+    aes(label = phylogroup,
+        x = PC1_centroid,
+        y = PC2_centroid),
+    color = 'black',
+    box.padding = 0.35
+  ) +
+  labs(
+    x = "PC1 [13.27%]",
+    y = "PC2 [5.49%]"
+  )
+
+
+ggsave('exploration/PCA_genePA_phylogroups.pdf',
+       height = 7, width = 9)
+
+
+
+
+# PG summary stats piechart -----------------------------------------------
+
+
+PG_summary = read_delim("data/panaroo_results/summary_statistics.txt", 
+                        delim = "\t", escape_double = FALSE, 
+                        col_names = FALSE, trim_ws = TRUE) %>% 
+  rename(Category = X1, 
+         Description = X2,
+         n_genes = X3) 
+
+
+# plot piechart
+
+PG_summary %>% 
+  filter(Category != "Total genes") %>%
+  ggplot(aes(x = "", y = n_genes, fill = Category)) +
+  geom_bar(stat = "identity", width=1, color="white") +
+  coord_polar("y", start = 0) +
+  theme_void() +
+  theme(legend.position = "bottom") +
+  # scale_fill_viridis(discrete = T) +
+  geom_text(aes(label = paste0(Category, "\n", n_genes)), 
+            position = position_stack(vjust = 0.5)) +
+  labs(title = "Pangenome Summary Statistics",
+       subtitle = "Number of genes in each category") +
+  theme(legend.position = "bottom") +
+  theme_cowplot(14)
+
+
+# treemap
+
+library(treemap)
+
+pdf("exploration/PG_summary_treemap.pdf", width = 9, height = 7)
+PG_summary %>% 
+  filter(Category != "Total genes") %>%
+  # filter(Category != "Cloud genes") %>% 
+  treemap(index = c("Category", "n_genes"),
+          vSize = "n_genes",
+          type = "index",
+          fontsize.labels = c(15, 12), # size of labels. Give the size per level of aggregation: size for group, size for subgroup, sub-subgroups...
+          fontcolor.labels = c("white", "black"), # Color of labels
+          fontface.labels = c(2, 1), # Font of labels: 1,2,3,4 for normal, bold, italic, bold-italic...
+          bg.labels = c("transparent"), # Background color of labels
+          align.labels = list(
+            c("center", "center"),
+            c("right", "bottom")
+          ), # Where to place labels in the rectangle?
+          overlap.labels = 0.5, # number between 0 and 1 that determines the tolerance of the overlap between labels. 0 means that labels of lower levels are not printed if higher level labels overlap, 1  means that labels are always printed. In-between values, for instance the default value .5, means that lower level labels are printed if other labels do not overlap with more than .5  times their area size.
+          inflate.labels = F, # If true, labels are bigger when rectangle is bigger.
+          palette = "Set1",
+          title = "Mondriaan plot"
+)
+
+dev.off()
+
+
+# ACC analysis  ---------------------------------------------------------------
+
+
+# ACC data has been calculated in Python 
+# with the script calculate_acc_parallel.py
+
+acc_data = read_csv("data/panaroo_results/acc_data.csv")
+
+
+acc_data.sum = acc_data %>% 
+  group_by(n_genomes) %>% 
+  summarise(mean_genes = mean(n_genes),
+            sd_genes = sd(n_genes))
+
+# Use log-log transformation to estimate initial values
+log_fit <- lm(log(mean_genes) ~ log(n_genomes), data = acc_data.sum)
+
+# Extract initial values from the linear model
+initial_k <- exp(coef(log_fit)[1])
+initial_b <- coef(log_fit)[2]
+
+# Print initial values
+initial_k
+initial_b
+
+# Fit Heap's law model using the improved initial values
+heaps_model <- nls(mean_genes ~ k * n_genomes^b, data = acc_data.sum, 
+                   start = list(k = initial_k, b = initial_b))
+
+# Summarize the model to see the estimated parameters
+summary(heaps_model)
+
+
+# Extract the fitted parameters
+k = coef(heaps_model)["k"]
+b = coef(heaps_model)["b"]
+
+# Create a sequence of genome numbers for plotting the fitted curve
+genomes_seq = seq(min(acc_data.sum$n_genomes), max(acc_data.sum$n_genomes), length.out = 80)
+
+# Calculate the fitted values using the estimated parameters
+fitted_values = k * genomes_seq^b
+
+# Add the fitted values to the original data frame
+acc_data.sum = acc_data.sum %>%
+  mutate(fitted_values = k * n_genomes^b)
+
+# Plot the data
+acc_data.sum %>%
+  ggplot(aes(x = n_genomes, y = mean_genes)) +
+  geom_line(aes(color = "Real Data")) +
+  geom_line(data = data.frame(genomes_seq, fitted_values), 
+            aes(x = genomes_seq, y = fitted_values, 
+                color = "Fitted Data")) +
+  geom_ribbon(aes(ymin = mean_genes - sd_genes, ymax = mean_genes + sd_genes), 
+              fill = "grey", alpha = 0.5) +
+  labs(title = "Heap's Law Fit to Pangenome Data",
+       x = "Number of Genomes",
+       y = "Number of Unique Genes",
+       color = NULL) +
+  theme_half_open() +
+  background_grid() +
+  scale_color_manual(values = c("Real Data" = "black", "Fitted Data" = "blue")) +
+  annotate("text", x = Inf, y = Inf, 
+           label = paste0("Heap's law: y = ", round(k, 2), " * x^", 
+                          round(b, 2)), 
+           hjust = 1.1, vjust = 2, size = 5)
+
+ggsave("exploration/Heap_law.pdf", width = 8, height = 7)
+
+
+
+
+
