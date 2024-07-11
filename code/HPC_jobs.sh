@@ -308,3 +308,35 @@ source activate ppanggo
 WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/ppanggolin_results
 
 ppanggolin msa -p $WORK/pangenome.h5 -c 32 -o $WORK/msa --verbose 1 --partition persistent
+
+
+### panaroo script --------------------------
+
+#PBS -l walltime=72:0:0
+#PBS -l select=1:ncpus=64:mem=500gb
+
+module load anaconda3/personal
+source activate panaroo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/genomes/bakta_annot/gff3_files
+OUT=/rds/general/project/lms-cabreiro-analysis/ephemeral/NCBI_ecoli/panaroo
+
+panaroo -i $WORK/gff3_batch_1/*.gff3 -o $OUT/results_batch_1 --clean-mode strict -t 64 --remove-invalid-genes --merge_paralogs
+
+
+### Panaroo merge for all results
+
+#PBS -l walltime=72:0:0
+#PBS -l select=1:ncpus=64:mem=360gb
+
+# Load modules for any applications
+
+module load anaconda3/personal
+source activate panaroo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results
+
+panaroo-merge -d  $WORK/results_batch_1 $WORK/results_batch_2 $WORK/results_batch_3 $WORK/results_batch_4 $WORK/results_batch_5  \
+ 	-o $WORK/panaroo_final -t 64 
+
+
