@@ -340,3 +340,84 @@ panaroo-merge -d  $WORK/results_batch_1 $WORK/results_batch_2 $WORK/results_batc
  	-o $WORK/panaroo_final -t 64 
 
 
+
+
+
+
+###### INTERPRO ------------
+
+#PBS -l walltime=48:0:0
+#PBS -l select=1:ncpus=48:mem=64gb
+
+# Load modules for any applications
+
+module load anaconda3/personal
+module load java/oracle-jdk-11.0.10
+source activate interpro
+
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_final
+
+/rds/general/user/dmarti14/home/interpro/interproscan-5.60-92.0/interproscan.sh -i $WORK/pan_genome_reference_aa.fa -cpu 48 -dp -d $WORK -goterms -f tsv
+
+
+
+
+###### Eggnog ------------
+
+#PBS -l walltime=24:0:0
+#PBS -l select=1:ncpus=40:mem=80gb
+
+# Load modules for any applications
+module load anaconda3/personal
+source activate eggnog
+
+DB=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/eggnog_db
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_final
+
+emapper.py -i $WORK/pan_genome_reference.fa -o $WORK/complete_PG_eggnogmap --data_dir $DB --override --itype CDS --cpu 40 -m novel_fams -m mmseqs
+
+
+### PROGENOMES DB --------------------
+
+#!/bin/bash
+#PBS -N diamond-db-build
+#PBS -l select=1:ncpus=20:mem=200gb
+#PBS -l walltime=24:00:00
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_final/progenomes
+
+echo "Unziping representative proteins"
+
+bunzip2 $WORK/progenomes3.proteins.representatives.fasta.bz2
+
+# Load DIAMOND
+module load anaconda3/personal
+source activate progenomes
+
+# Make a local copy of the input file in the node's scratch space
+# cp $WORK/proteins.fasta $TMPDIR/progenomes3.proteins.representatives.fasta
+
+# Make the DIAMOND database
+echo "### RUNNING DIAMOND MAKEDB"
+diamond makedb --in $WORK/progenomes3.proteins.representatives.fasta -d  $WORK/progenome3.proteins --threads 20
+
+
+### PROGENOMES BLASTX ------------------------------
+
+#!/bin/bash
+
+#PBS -N diamond-align
+#PBS -l select=1:ncpus=32:mem=200gb
+#PBS -l walltime=24:00:00
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_final
+
+# Load DIAMOND
+module load anaconda3/personal
+source activate progenomes
+
+# Run DIAMOND to align the query nucleotide sequences against the protein database
+diamond blastx --query $WORK/pan_genome_reference.fa --db $WORK/progenomes/progenome3.proteins.dmnd --out $WORK/progenomes/reference_PG_progenomes3.txt --threads 32 --outfmt 6
+
+
