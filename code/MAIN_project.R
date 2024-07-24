@@ -306,6 +306,7 @@ phylogroups = read_tsv("tables/phylogroups_ezclermont.tsv",
          phylogroup = `X2`) %>% 
   mutate(assembly_id = str_sub(genome_id, 1, 15))
 
+
 # update the metadata with the phylogroup information
 metadata_filt = metadata_filt %>% 
   left_join(phylogroups) 
@@ -371,9 +372,10 @@ metadata_final = metadata_filt %>%
   bind_rows(lab_metadata) %>%
   filter(!assembly_id_simp %in% c(removals_contigs, removals_phylogroup))
 
-metadata_final %>% 
-  write_csv("tables/MAIN_ecoli_NCBI_metadata.csv")
+# metadata_final %>%
+#   write_csv("tables/MAIN_ecoli_NCBI_metadata.csv")
 
+# metadata_final = read_csv("tables/MAIN_ecoli_NCBI_metadata.csv")
 
 
 
@@ -504,8 +506,9 @@ pca_data = read_delim("tables/PCA_gene_pa_matrix.tsv",
            delim = "\t", escape_double = FALSE, 
            trim_ws = TRUE) %>% 
   rename(assembly_id_simp = `...1`) %>% 
-  left_join(metadata)
+  left_join(metadata_final)
 
+metadata_final %>% filter(is.na(phylogroup))
 
 
 pca_data %>% 
@@ -673,5 +676,126 @@ ggsave("exploration/Heap_law.pdf", width = 8, height = 7)
 
 
 
+# Gene lists partition ----------------------------------------------------
+
+gene_presence
+
+core_genes = gene_presence %>% filter(gene_prop > 0.99) %>% pull(Gene)
+shell_genes = gene_presence %>% filter(gene_prop <= 0.99, gene_prop > 0.15) %>% 
+  pull(Gene)
+cloud_genes = gene_presence %>% filter(gene_prop <= 0.15) %>% pull(Gene)
+
+gene_presence %>% 
+  mutate(gene_group = case_when(
+    Gene %in% core_genes ~ "Core",
+    Gene %in% shell_genes ~ "Shell",
+    Gene %in% cloud_genes ~ "Cloud"
+  )) %>% 
+  write_csv("tables/gene_groups.csv")
+
+
+# gene partition by phylogroup --------------------------------------------
+
+gene_pa_long = gene_pa %>% 
+  pivot_longer(-Gene, names_to = "assembly_id_simp", values_to = "presence") %>% 
+  filter(presence == 1) %>% 
+  left_join(metadata_final %>% select(assembly_id_simp, phylogroup)) 
+
+
+
+gene_pa_long %>% 
+  filter(is.na(phylogroup)) %>% 
+  distinct(assembly_id_simp)
+
+
+gene_count_phylo = gene_pa_long %>% 
+  group_by(Gene, phylogroup) %>% 
+  count()
+
+phylo_counts = metadata_final %>% 
+  count(phylogroup) %>% 
+  rename(n_phylo = n)
+
+
+gene_classes_phylogroup = gene_count_phylo %>% 
+  arrange(desc(n)) %>% 
+  left_join(phylo_counts) %>% 
+  mutate(prop = n / n_phylo) %>% 
+  mutate(class = case_when(
+    prop > 0.95 ~ "Core",
+    prop <= 0.95 & prop > 0.15 ~ "Shell",
+    prop <= 0.15 ~ "Cloud"
+  )) %>% 
+  group_by(phylogroup, class) %>% 
+  count() %>% 
+  group_by(phylogroup) %>%
+  mutate(prop = n / sum(n))
+
+gene_classes_phylogroup %>% 
+  write_csv("tables/gene_classes_phylogroup.csv")
+
+# plot stacked barplot per phylogroup
+
+gene_class_colors = c("Core" = "#158B81", 
+                      "Cloud" = "#FF7F00", 
+                      "Shell" = "#CD6090")
+
+gene_classes_phylogroup %>% 
+  ggplot(aes(phylogroup, n, fill = class)) +
+  geom_bar(stat = "identity", position = "fill") +
+  labs(x = "Phylogroup", y = "Number of genes") +
+  scale_fill_manual(values = gene_class_colors) +
+  theme_cowplot(14) +
+  geom_text(aes(label = scales::percent(prop)), 
+            position = position_fill(vjust = 0.5))
+
+ggsave("exploration/gene_classes_phylogroup.pdf", width = 8, height = 7)
+
+gene_classes_phylogroup %>% 
+  filter(class == "Core") %>%
+  ggplot(aes(phylogroup, n, fill = phylogroup)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Phylogroup", y = "Proportion of core genes") +
+  scale_fill_manual(values = phylo_colors) 
+
+gene_classes_phylogroup %>% 
+  group_by(phylogroup) %>%
+  mutate(total = sum(n)) %>%
+  # filter(class == "Core") %>%
+  ggplot(aes(x = n, y = total, color = phylogroup)) +
+  geom_smooth(method = "lm", se = F, color = 'grey69') +
+  geom_point(size = 4) +
+  scale_x_continuous(labels = scales::comma) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_color_manual(values = phylo_colors) +
+  facet_wrap(~class, scales = "free",
+             ncol =1) +
+  ggpubr::stat_cor(method = "pearson", size = 3,
+                   label.y = 30000, label.x = 2500,
+                   color = 'black') +
+  labs(x = "Number of core genes", y = "Total number of genes") +
+  theme_cowplot(14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("exploration/core_genes_phylogroup.pdf", width = 8, height = 7)
+
+gene_classes_phylogroup %>% 
+  group_by(phylogroup) %>%
+  mutate(total = sum(n)) %>%
+  # filter(class == "Core") %>%
+  ggplot(aes(x = n, y = prop, color = phylogroup)) +
+  geom_smooth(method = "lm", se = F, color = 'grey69') +
+  geom_point(size = 4) +
+  scale_x_continuous(labels = scales::comma) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_color_manual(values = phylo_colors) +
+  facet_wrap(~class, scales = "free",
+             ncol =1) +
+  ggpubr::stat_cor(method = "pearson", size = 3,
+                   label.y = 0.4, label.x = 2800,
+                   color = 'black') +
+  labs(x = "Number of genes", y = "Proportion of genes") +
+  theme_cowplot(14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
