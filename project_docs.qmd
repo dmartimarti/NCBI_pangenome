@@ -306,11 +306,19 @@ The gene annotation was performed with Bakta (v. 1.9.3) using the full database 
 ## Software used and versions
 
 -   R version 4.3.2
+
 -   NCBI dataset download tool v. 16.2.0
+
 -   Bakta v. 1.9.3
+
 -   Panaroo v. 1.5.0
+
 -   mash v. 1.1
+
 -   EzClermont v. 0.7.0
+
 -   PPanGGOLiN v. 2.0.5
+
+-   interproscan v. 5.59-91.0
 
 ## 
