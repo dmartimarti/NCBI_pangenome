@@ -64,3 +64,5 @@ data/.DS_Store
 /data/panaroo_results
 /exploration
 /tables
+/data/proteinfer
+code/embed_ProtT5.ipynb
