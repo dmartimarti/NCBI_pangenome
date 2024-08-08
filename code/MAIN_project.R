@@ -455,7 +455,7 @@ gene_pa_t = gene_pa %>%
   t() %>%
   as_tibble() %>% 
   mutate(genome = genome_names$value,
-         .before = "envZ")
+         .before = "yeeA~~~nadB")
 
 # change the column names to genome names
 names(gene_pa) = c("Gene", gene_pa_t$genome)
@@ -506,6 +506,9 @@ pca_data = read_delim("tables/PCA_gene_pa_matrix.tsv",
            delim = "\t", escape_double = FALSE, 
            trim_ws = TRUE) %>% 
   rename(assembly_id_simp = `...1`) %>% 
+  # from the assembly_id_simp that starts with "NT", remove all after an underscore "_" if there is one
+  mutate(assembly_id_simp = case_when(str_detect(assembly_id_simp, "NT12") ~ str_remove(assembly_id_simp, "_.*"),
+                                      TRUE ~ assembly_id_simp)) %>%
   left_join(metadata_final)
 
 metadata_final %>% filter(is.na(phylogroup))
@@ -536,8 +539,8 @@ pca_data %>%
     box.padding = 0.35
   ) +
   labs(
-    x = "PC1 [13.27%]",
-    y = "PC2 [5.49%]"
+    x = "PC1 [10.87%]",
+    y = "PC2 [4.86%]"
   )
 
 
@@ -699,9 +702,9 @@ gene_presence %>%
 gene_pa_long = gene_pa %>% 
   pivot_longer(-Gene, names_to = "assembly_id_simp", values_to = "presence") %>% 
   filter(presence == 1) %>% 
+  mutate(assembly_id_simp = case_when(str_detect(assembly_id_simp, "NT12") ~ str_remove(assembly_id_simp, "_.*"),
+                                      TRUE ~ assembly_id_simp)) %>%
   left_join(metadata_final %>% select(assembly_id_simp, phylogroup)) 
-
-
 
 gene_pa_long %>% 
   filter(is.na(phylogroup)) %>% 
@@ -774,8 +777,7 @@ gene_classes_phylogroup %>%
                    label.y = 30000, label.x = 2500,
                    color = 'black') +
   labs(x = "Number of core genes", y = "Total number of genes") +
-  theme_cowplot(14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme_cowplot(14) 
 
 ggsave("exploration/core_genes_phylogroup.pdf", width = 8, height = 7)
 
@@ -794,8 +796,7 @@ gene_classes_phylogroup %>%
   ggpubr::stat_cor(method = "pearson", size = 3,
                    label.y = 0.4, label.x = 2800,
                    color = 'black') +
-  labs(x = "Number of genes", y = "Proportion of genes") +
-  theme_cowplot(14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  labs(x = "Number of core genes", y = "Proportion of genes") +
+  theme_cowplot(14) 
 
-
+ggsave("exploration/core_genes_phylogroup_prop.pdf", width = 8, height = 7)

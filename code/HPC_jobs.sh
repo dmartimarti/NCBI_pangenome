@@ -369,9 +369,9 @@ module load java/oracle-jdk-11.0.10
 source activate interpro
 
 
-WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_final
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_paralogs
 
-/rds/general/user/dmarti14/home/interpro/interproscan-5.60-92.0/interproscan.sh -i $WORK/pan_genome_reference_aa.fa -cpu 48 -dp -d $WORK -goterms -f tsv
+/rds/general/user/dmarti14/home/interproscan/interproscan.sh -i $WORK/pan_genome_reference_aa.fa -cpu 48 -dp -d $WORK -goterms -f tsv
 
 
 
@@ -386,7 +386,7 @@ module load anaconda3/personal
 source activate eggnog
 
 DB=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/eggnog_db
-WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_final
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_paralogs
 
 emapper.py -i $WORK/pan_genome_reference.fa -o $WORK/complete_PG_eggnogmap --data_dir $DB --override --itype CDS --cpu 40 -m novel_fams -m mmseqs
 
@@ -398,7 +398,7 @@ emapper.py -i $WORK/pan_genome_reference.fa -o $WORK/complete_PG_eggnogmap --dat
 #PBS -l select=1:ncpus=20:mem=200gb
 #PBS -l walltime=24:00:00
 
-WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_final/progenomes
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_no_paralogs/progenomes
 
 echo "Unziping representative proteins"
 
@@ -424,14 +424,15 @@ diamond makedb --in $WORK/progenomes3.proteins.representatives.fasta -d  $WORK/p
 #PBS -l select=1:ncpus=32:mem=200gb
 #PBS -l walltime=24:00:00
 
-WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_final
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_paralogs
+DB=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_no_paralogs/progenomes
 
 # Load DIAMOND
 module load anaconda3/personal
 source activate progenomes
 
 # Run DIAMOND to align the query nucleotide sequences against the protein database
-diamond blastx --query $WORK/pan_genome_reference.fa --db $WORK/progenomes/progenome3.proteins.dmnd --out $WORK/progenomes/reference_PG_progenomes3.txt --threads 32 --outfmt 6
+diamond blastx --query $WORK/pan_genome_reference.fa --db $DB/progenome3.proteins.dmnd --out $WORK/progenomes/reference_PG_progenomes3.txt --threads 32 --outfmt 6
 
 
 
@@ -470,7 +471,7 @@ diamond blastx --query $WORK/pan_genome_reference.fa --db $WORK/progenomes/proge
 
 # test proteinfer 
 
-#PBS -l walltime=2:00:00,select=1:ncpus=8:mem=16G:ngpus=1:gpu_type=RTX6000
+#PBS -l walltime=48:00:00,select=1:ncpus=16:mem=64G:ngpus=1:gpu_type=RTX6000
 
 module load anaconda3/personal
 module load cuda/8.0
@@ -478,56 +479,10 @@ module load cudnn/6.5
 
 source activate proteinfer
 
-WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_final/gene_fasta_prot
-WORK_FOLDER=$WORK/test
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_paralogs/aa_files
 MODELS=$HOME/pangenome_study/progenomes/gene_seqs/cached_models
 
-for fasta in $(ls $WORK_FOLDER/*fasta)
-do
-        echo "Reading file $fasta \n\n"
-        python $HOME/proteinfer/proteinfer.py -i $fasta -o $fasta.tsv --num_ensemble_elements 5 --reporting_threshold 0.4 \
-                --model_cache_path $MODELS 
-
-done
+pytho $HOME/proteinfer/proteinfer.py -i $WORK/pan_1.fa -o $WORK/pan_1.tsv --num_ensemble_elements 5 --reporting_threshold 0.5 \
+        --model_cache_path $MODELS
 
 
-
-
-#!/bin/bash
-
-# Array of folder names
-folders=(
-    1 2001 4001 6001 8001 10001 12001 14001 16001 18001 20001
-    22001 24001 26001 28001 30001 32001 34001 36001 38001
-    40001 42001 44001 46001 48001 50001 52001
-)
-
-# Loop through each folder name and create a new PBS script
-for folder in "${folders[@]}"
-do
-    # Create the new script file
-    script_name="pbs_script_${folder}.pbs"
-    echo "#PBS -l walltime=48:00:00,select=1:ncpus=8:mem=16G:ngpus=1:gpu_type=RTX6000" > $script_name
-    echo "" >> $script_name
-    echo "module load anaconda3/personal" >> $script_name
-    echo "module load cuda/8.0" >> $script_name
-    echo "module load cudnn/6.5" >> $script_name
-    echo "" >> $script_name
-    echo "source activate proteinfer" >> $script_name
-    echo "" >> $script_name
-    echo "WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_final/gene_fasta_prot" >> $script_name
-    echo "WORK_FOLDER=\$WORK/$folder" >> $script_name
-    echo "MODELS=\$HOME/pangenome_study/progenomes/gene_seqs/cached_models" >> $script_name
-    echo "" >> $script_name
-    echo "for fasta in \$(ls \$WORK_FOLDER/*fasta)" >> $script_name
-    echo "do" >> $script_name
-    echo "        echo \"Reading file \$fasta \\n\\n\"" >> $script_name
-    echo "        python \$HOME/proteinfer/proteinfer.py -i \$fasta -o \$fasta.tsv --num_ensemble_elements 5 --reporting_threshold 0.4 \\" >> $script_name
-    echo "                --model_cache_path \$MODELS" >> $script_name
-    echo "" >> $script_name
-    echo "done" >> $script_name
-done
-
-
-
-panaroo-extract-gene -q  --pa gene_presence_absence.csv --gene gene_data.csv -o core_genome_genes --dna --idtype 'isolate' 
