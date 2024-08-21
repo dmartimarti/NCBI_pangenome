@@ -65,4 +65,9 @@ data/.DS_Store
 /exploration
 /tables
 /data/proteinfer
+/goPredSim
 code/embed_ProtT5.ipynb
+/data/eggnog
+/data/goPredSim
+/data/interpro
+/data/progenomes
