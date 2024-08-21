@@ -303,6 +303,22 @@ The E. coli strains were selected from the NCBI genome database. The metadata wa
 
 The gene annotation was performed with Bakta (v. 1.9.3) using the full database (v. 5.1) and by default parameters. E. coli phylogroups were determined with EzClermont (v. 0.7.0) @Waters2020 based on the approach from CermonTyping @Beghain2018. Genomes that did not classify into the main E. coli phylogroups or that were cryptic were discarded for following analyses.
 
+### Function prediction
+
+#### Proteinfer
+
+Reference genes from panaroo were split into 4 smaller files to fit in memory. Proteinfer @Sanderson2023 code was downloaded from github and function prediction was done by using 5 ensemble models and a reporting threshold of 0.3
+
+#### Protein embeddings with ProtT5-XL-U50
+
+The reference genes from panaroo was translated into proteins and sequences were clustered with CD-HIT v. 4.8.1 (similarity threshold of 0.98) to remove similar sequences from the dataset, resulting in 55942 unique clusters from the 57219 original sequences. The resulting file was split into 20 smaller files to fit into memory. Proteins were embedded with bio-embeddings pipeline (v.0.2.2), by using the model ProtT5-XL-U50 @Elnaggar2021 in half-precision mode. Proteins larger than 3000 amino acids were discarded to fit in memory. Transfer learning was done using available pipelines under bio-embeddings that used goPredSim @Littmann2021, using euclidean distances and a k_nearest_neighbours of 3. Prot T5 h5 file was used as a reference with GOA annotations from 2022.
+
+Functional prediction with proteinfer, protein embeddings and transfer learning was carried in a computer with an AMD Ryzen 7 7800X3D processor, 32 GB or RAM, and an RTX 4080 with 16 GB of memory, in the WSL2 platform.
+
+### Phylogeny
+
+From the core genome from panaroo, a subset of 150 genes, present in all strains, was extracted to build the phylogenetic tree of the pangenome. Before aligning each gene per separate, as some of them were in multicopy, only one gene per genome was kept for alignment. The alignment was done using mafft @Katoh2013 (v. 7. 526), and the tree was constructed with IQ-Tree (v. 2.3.6) @Nguyen2014 with the GTR+I+G substitution model.
+
 ## Software used and versions
 
 -   R version 4.3.2
@@ -320,5 +336,13 @@ The gene annotation was performed with Bakta (v. 1.9.3) using the full database 
 -   PPanGGOLiN v. 2.0.5
 
 -   interproscan v. 5.59-91.0
+
+-   CD-HIT v. 4.8.1
+
+-   bio-embeddings v. 0.2.2
+
+-   IQ-tree v. 2.3.6
+
+-   mafft v. 7.526
 
 ## 
