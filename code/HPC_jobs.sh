@@ -439,38 +439,6 @@ diamond blastx --query $WORK/pan_genome_reference.fa --db $DB/progenome3.protein
 
 ### Proteinfer -----------------------------
 
-# folders to run
-# 1
-# 2001
-# 4001
-# 6001
-# 8001
-# 10001
-# 12001
-# 14001
-# 16001
-# 18001
-# 20001
-# 22001
-# 24001
-# 26001
-# 28001
-# 30001
-# 32001
-# 34001
-# 36001
-# 38001
-# 40001
-# 42001
-# 44001
-# 46001
-# 48001
-# 50001
-# 52001
-
-
-# test proteinfer 
-
 #PBS -l walltime=48:00:00,select=1:ncpus=16:mem=64G:ngpus=1:gpu_type=RTX6000
 
 module load anaconda3/personal
@@ -486,3 +454,68 @@ pytho $HOME/proteinfer/proteinfer.py -i $WORK/pan_1.fa -o $WORK/pan_1.tsv --num_
         --model_cache_path $MODELS
 
 
+
+
+
+# --------------------------
+# panaroo extract genes 
+
+
+#!/bin/bash
+#PBS -l select=1:ncpus=8:mem=64gb
+#PBS -l walltime=24:00:00
+
+module load anaconda3/personal
+source activate panaroo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_no_paralogs
+
+
+
+
+panaroo-extract-gene -q accC --pa $WORK/gene_presence_absence.csv --gene $WORK/gene_data.csv -o $WORK/core_genome_genes --dna --idtype 'isolate' 
+
+# --------------------------
+
+
+#PBS -l walltime=2:0:0
+#PBS -l select=1:ncpus=24:mem=24gb
+#PBS -J 1-150 
+
+# Load modules for any applications
+
+module load anaconda3/personal
+source activate panaroo
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_no_paralogs/core_genome_genes/extracted_gene_sequences_deduplicated
+INPUT=$WORK/gene_list.txt
+
+GENOME=`head -n $PBS_ARRAY_INDEX $INPUT | tail -1`
+GENOME_NAME=$(basename $GENOME)  
+
+/rds/general/user/dmarti14/home/anaconda3/envs/panaroo/bin/mafft --thread 24 --auto --clustalout --reorder $WORK/$GENOME > $WORK/aln/$GENOME_NAME.aln
+
+
+
+
+
+
+######## PHYLOGENETIC TREE ----------------------------------------
+
+#PBS -l walltime=72:0:0
+#PBS -l select=1:ncpus=32:mem=240gb
+
+# Load modules for any applications
+
+module load anaconda3/personal
+source activate iqtree
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_no_paralogs/core_genome_genes
+
+mkdir $WORK/phy_tree
+
+cp $WORK/core_150.aln $TMPDIR
+
+iqtree -s core_150.aln -fast -m GTR+I+G -T AUTO --threads-max 32 -v -pre core_tree
+
+cp core_tree* $WORK/phy_tree
