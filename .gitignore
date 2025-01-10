@@ -75,3 +75,10 @@ code/embed_ProtT5.ipynb
 /references_doc
 owltools/
 code/annotations.db
+/GO_merge
+/project_docs_files
+project_docs_files/libs/quarto-html/quarto-syntax-highlighting.css
+/presentations
+/data/t5_embeddings
+/data/esm2_embeddings
+/GO_prediction
