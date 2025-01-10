@@ -1,8 +1,19 @@
 ---
-title: "Navigating the E. coli functional landscape"
+title: "Exploring the E. coli pangenome functional structure with protein language models reveal functional niches"
 author: "Daniel Martinez-Martinez, Filipe Cabreiro"
 bibliography: references.bib
 csl: nature.csl
+toc: true
+number-sections: true
+highlight-style: pygments
+crossref:
+  custom:
+    - kind: float
+      key: suppfig
+      latex-env: suppfig
+      reference-prefix: Figure S
+      space-before-numbering: false
+      latex-list-of-description: Supplementary Figure
 format:
   html:
     df-print: paged
@@ -13,311 +24,97 @@ editor: visual
 
 ## Introduction
 
-The partition of the existing bacteria into biological units have been debated over time, leaving us with a working framework where bacterial species can be divided based based on their genetic content. However, bacterial species are non-stationary groups that are in constant evolution, dynamically gaining and losing genetic material while keeping a core of functions unchanged even across large geographical distances. Moreover, the functional content of a given pair of strains can largely differ due to their evolutionary history, meaning that they can have distinct ways to operate with their environment. Besides, the functional characterization of these strains remains an open challenge due to their, sometimes, extremely large diversity and lack of experimental validation. This project is meant to explore the functional landscape of the *Escharichia coli* pangenome, one of the most sequenced bacterial species at this moment.
+The partition of the existing bacteria into biological units have been debated over time, leaving us with a working framework where bacterial species can be divided based based on their genetic content. However, bacterial species are non-stationary groups that are in constant evolution, dynamically gaining and losing genetic material while keeping a core of functions unchanged even across large geographical distances. Moreover, the functional content of a given pair of strains can largely differ due to their evolutionary history, meaning that they can have distinct ways to operate with their environment. Besides, the functional characterization of these strains remains an open challenge due to their, sometimes, extremely large diversity and lack of experimental validation.
+
+The *E. coli* pangenome encompasses the entire gene repertoire of the E. coli species, including genes present in all strains (core genome) and those found only in some strains (accessory genome) @Hall2021 . This pangenome is considered "open," meaning it continues to evolve by acquiring new genes and diversifying @Rasko2008 @Brockhurst2019. The genomes of different strains of E. coli range in size from 4.5 to over 5.5 Mbp, and past studies have characterised that this species has a pan-genome composed of more than 15,000 \[FIX THIS\] unique proteins. Studies suggest that the E. coli pangenome contains over 2,400 genes in the core genome @Chauhan2024 . The core genome of E. coli has been estimated to be just 6% of the pan-genome, highlighting the significant genetic diversity across strains @Lagerstrom2024 . Horizontal gene transfer between strains and other bacterial species contributes significantly to the vastness of the E. coli pan-genome @Lagerstrom2024 . Even with a whole-genome sequence, it can be difficult to determine the potential pathologies of an E. coli isolate without prior knowledge @Geurtsen2022 . This vast genetic diversity presents challenges in understanding the full functional potential of the E. coli pangenome. The E. coli pangenome exhibits a distinct structure with two major groups of phylons, each with unique genetic characteristics @Chauhan2024 .
+
+PLMs are a type of artificial intelligence model that learn the "language" of proteins by analyzing vast amounts of protein sequence data. This allows them to understand the relationships between amino acids and predict the properties and functions of proteins based on their sequences. Interestingly, PLMs can capture biophysical features of protein sequences directly from the raw sequence data, without the need for multiple sequence alignments or evolutionary information @Elnaggar2021 . ProtTrans T5 and ESM2 @Lin2023 are examples of such models, trained on massive datasets of protein sequences. ProtTrans T5 is based on the T5 architecture and was pre-trained on a large corpus of protein sequences in a self-supervised manner. This means that the model learned to predict masked amino acids within protein sequences without explicit human labeling. ESM2, on the other hand, is a transformer-based protein language model pre-trained on a masked language model (MLM) task. Its objective is to recover the original amino acid types from the rest of the protein sequence. Both models have shown remarkable performance in various protein-related tasks, including structure prediction and function annotation.
+
+PLMs are being increasingly used in genomics research to analyze and interpret the information encoded in DNA and protein sequences. They can be used to predict the function of genes, identify potential drug targets, and understand the evolutionary relationships between different organisms. Genomic language models (gLMs) have the potential to make predictions about both DNA sequences and the proteins they encode, offering a more integrated approach to genomic analysis @Boshar2024 . One promising application of PLMs is in the study of bacterial pangenomes. By analyzing the sequences of genes within a pangenome, PLMs can help identify genes with similar functions, predict the roles of unknown genes, and understand the evolutionary dynamics of the pangenome. Companies are leveraging PLMs to design novel proteins with specific functions, expanding the known functional space of protein sequences. PLMs can also be used to improve multiple sequence alignment (MSA) by clustering and ordering amino acid contextual embeddings, especially in cases where traditional MSA methods struggle @McWhite2023 .
+
+This project is meant to explore the functional landscape of the *Escharichia coli* pangenome, one of the most sequenced bacterial species at this moment.
 
 ## Results
 
-### Filtering strains to be analysed
+### General structure of the data
 
-#### Contigs and Scaffold status
+We gathered a big cohort of Escherichia coli genomes from NCBI on January 11th 2024, where around 40.000 genome assemblies were available to download on that specific date. To avoid having to work with a cohort too big for our computational resources and to improve the quality of the results, we filtered that list by only selecting those genomes that were near completion and free of contamination. Genomes larger than 7Mbp were also discarded as we suspected these could come from bad assembling processes and could distort the analyses. In order to avoid including strains that did not belong to the E. coli species, we removed strains whose average pairwise distances were higher than 0.05, a threshold that is commonly used to define a bacterial species @RodriguezR2024.
 
-```{r}
-#| warning: false
-#| label: load-packages
-#| cache: true
+### Function predicted by different methods
 
-library(tidyverse)
-library(readr)
-library(readxl)
-library(cowplot)
-library(viridis)
-library(patchwork)
+In this work we have used 4 different types of function prediction from very different nature: interproscan @Jones2014 and eggnog-mapper @Cantalapiedra2021 use a sequence similarity measure to predict the GO terms (or others) into proteins; proteinfer @Sanderson2023 uses deep learning (DL) based on convolutional neural networks; and goPredSim @Littmann2021 uses a language model (LM) trained on the transformers T5 architecture with the UniProt proteins to embed sequences and do transfer learning according to distances.
 
-theme_set(theme_cowplot(14))
+Results from GoPredSim were filtered depending on the distance of their kNN, by applying a threshold of 1.05 which is roughly the peak of the distance distribution distance observed (see @suppfig-gopred-dist).
 
-```
+After filtering the GO terms, we analysed how many gene families were included in each of the four methods. As can be observed in @fig-genenumber-methods, the number of gene families predicted by each method is quite different. As seen in @fig-number-methods, both DL and LM methods can predict functions for more than 70% of the gene families, whereas the two methods based on sequence similarity perform quite poorly in this scenario, eggnog-mapper being in last place. Moreover, and as expected, @fig-venn-methods shows that both Proteinfer and goPredSim methods share a good number of predictions exclusively for that combination; Proteinfer has almost 15K unique predictions compared to the other methods; gene families predicted by the 4 methods at the same time cover the majority of the core genome \[CALCULATE % HERE\]. It is worth mentioning that we were unable to predict functions of 2873 gene families by any of the 4 methods. All these comparisons have been made using all the GO terms predicted, but as seen in the @suppfig-proteinfer-dist, most of the gene families only have one or two GO terms associated, which in most cases belong to very general classes (e.g. biological process, cellular component or molecular function parent categories.)
 
-Strain information has been downloaded from NCBI genomes. The metadata was downloaded on January 11th 2024. To reduce the number of E. coli genomes, the assembly level allowed was only for the types of "chromosome", "complete genome" or "scaffold". We can have a look at parameters such as the contig_n50/scaffold_n50 to see how the distribution of contigs looks like in the full cohort. We can see two different peaks, one near 0 that represents all the assemblies that have multiple contigs, and another around 5 megabases
+::: {#fig-genenumber-methods layout-ncol="2"}
+![Proportion of gene families over the reference](exploration/gene_families_GO_methods.png){#fig-number-methods}
 
-```{r}
-#| warning: false
-#| label: metadata-load
-#| cache: true
-metadata = read_xlsx('ecoli_ncbi_metadata.xlsx')
+![Venn diagram](exploration/gene_families_GO_venn.png){#fig-venn-methods}
 
-metadata = metadata %>% 
-  distinct(assembly_name, .keep_all = T)
-
-metadata = metadata %>% 
-  # remove the string after the dot in assembly_id
-  mutate(assembly_id_simp = str_remove(assembly_id, "\\..*"),
-         .before = "assembly_name")
-
-metadata
-```
-
-```{r}
-#| warning: false
-#| label: scaffold_metadata
-#| cache: true
-
-metadata %>% 
-  ggplot(aes(contig_n50)) +
-  geom_histogram(binwidth = 10000) +
-  scale_x_continuous(labels = scales::comma) +
-  labs(x = "Contig N50", y = "Number of genomes") +
-  theme_cowplot(14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
-
-
-# plot distribution of scaffold_n50
-metadata %>% 
-  ggplot(aes(scaffold_n50)) +
-  geom_histogram(binwidth = 10000) +
-  scale_x_continuous(labels = scales::comma) +
-  labs(x = "Scaffold N50", y = "Number of genomes") +
-  theme_cowplot(14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
-```
-
-It is even more evident that there are huge differences in terms of the scaffold N50 parameter in respect to their assembly level. As expected, we have a greater count of scaffold at chromosome or complete genome level compared to scaffold. The assemblies from the first two categories will be included, and now we need to include a threshold for the last category to remove strains with low scaffold N50.
-
-```{r}
-#| warning: false
-#| cache: true
-# plot scaffold distribution by assembly level with violin plot
-metadata %>% 
-  ggplot(aes(assembly_level, scaffold_n50, fill = assembly_level)) +
-  geom_violin(show.legend = F) +
-  # plot mean and sd as pointrange
-  stat_summary(fun.data = mean_sdl, geom = "pointrange", 
-               fun.args = list(mult = 1), color = "black",
-               show.legend = F) +
-  scale_y_continuous(labels = scales::comma) +
-  labs(x = "Assembly level", y = "Scaffold N50") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_fill_viridis(discrete = T, begin = 0.2, end = 0.8) +
-  theme_cowplot(14)
-
-```
-
-When we filter out the complete categories and then show the distribution of the scaffold N50, we have this distribution:
-
-```{r}
-#| warning: false
-#| cache: true
-#| fig.cap: "Left: Distribution of scaffold N50 in the full cohort. Right: Distribution of scaffold N50 in the filtered cohort with a threshold of 150K."
-
-# show scaffold distribution of assembly_level == scaffold
-p1 = metadata %>% 
-  filter(assembly_level == 'Scaffold') %>% 
-  ggplot(aes(scaffold_n50)) +
-  geom_histogram(binwidth = 10000) +
-  scale_x_continuous(labels = scales::comma) +
-  labs(x = "Scaffold N50", y = "Number of genomes") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  theme_cowplot(14)
-
-p2 = metadata %>% 
-  filter(assembly_level == 'Scaffold') %>%
-  filter(scaffold_n50 < 500000) %>% 
-  ggplot(aes(scaffold_n50)) +
-  geom_histogram(binwidth = 10000) +
-  scale_x_continuous(labels = scales::comma) +
-  labs(x = "Scaffold N50", y = "Number of genomes") +
-  theme_cowplot(14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
-
-
-# show them with patchwork
-p1 + p2
-
-metadata_filt = metadata %>% filter(scaffold_n50 > 100000)
-dims = dim(metadata_filt)
-dims[1]
-```
-
-From the distribution of the scaffold N50 values, we can safely chose a threshold of \~ 150K as that will leave out E. coli assemblies that have a high amount of contigs/scaffolds.
-
-**In summary:** we are choosing a threshold of 150K for the scaffold_n50 parameter from now on. Anything below that will be discarded.
-
-After this filtering step we have `{r} dims[1]` genomes left.
-
-#### CheckM filters
-
-We need to filter the bad quality genomes from the cohort, which we can start doing by filtering out by checkM metricsL:
-
--   **checkM completeness**: the value that is usually applied ranges from 70%, but I'll be using a more strict value of 95% because I want to have full genomes when possible.
-
--   **checkM contamination**: I am applying a value of 1% max contamination to avoid getting false information regarding the gene content.
-
-```{r}
-#| warning: false
-#| cache: true
-
-metadata_filt %>% 
-  mutate(checkM_completeness_class = 
-           case_when(is.na(checkM_completeness) ~ 'NA',
-                     checkM_completeness < 95 ~ "< 95%",
-                     checkM_completeness >= 95 ~ ">= 95%")) %>% 
-  count(checkM_completeness_class) %>% print
-
-metadata_filt %>% 
-  mutate(checkM_contamination_class = 
-           case_when(is.na(checkM_contamination) ~ 'NA',
-                     checkM_contamination > 1 ~ "> 1%",
-                     checkM_contamination <= 1 ~ "<= 1%")) %>% 
-  count(checkM_contamination_class) %>% print
-
-
-metadata_filt = metadata_filt %>% 
-  filter(checkM_completeness > 95,
-         checkM_contamination < 1) %>% 
-  filter(seq_length < 7000000)
-
-
-```
-
-Finally, after calculating the number of contigs per assembly, I have seen that some of them have a high number of contigs, which is not a good sign for the quality of the assembly. I have decided to filter out genomes with more than 300 contigs.
-
-```{r}
-#| warning: false
-#| cache: true
-#| label: contig_number
-#| fig.cap: "Left: Distribution of contig number in the filtered cohort. Right: Distribution of contig number in the filtered cohort with a threshold of 300 contigs."
-
-metadata_filt = read_csv("tables/ecoli_ncbi_metadata_filt.csv")
-
-p1 = metadata_filt %>% 
-  # filter(Contig_number < 500) %>% 
-  ggplot(aes(Contig_number)) +
-  geom_histogram(binwidth = 1) +
-  scale_x_continuous(labels = scales::comma) +
-  labs(x = "Number of contigs", y = "Number of genomes") +
-  theme_cowplot(14)
-
-p2 = metadata_filt %>% 
-  filter(Contig_number < 300) %>% 
-  ggplot(aes(Contig_number)) +
-  geom_histogram(binwidth = 1) +
-  scale_x_continuous(labels = scales::comma) +
-  labs(x = "Number of contigs", y = "Number of genomes") +
-  theme_cowplot(14)
-
-p1 + p2
-
-metadata_filt = metadata_filt %>% 
-  filter(Contig_number < 300)
-```
-
-Another filter that I have applied is using the phylogroup characterization of the strains with the tool EzClermont @Waters2020. As we can see in the next plot with the phylogroup distributions, we have some that failed or that belong to cryptic groups. I have discarded these.
-
-```{r}
-#| warning: false
-#| cache: true
-
-phylogroups = read_tsv("tables/phylogroups_ezclermont.tsv",
-         col_names = F) %>% 
-  rename(genome_id = `X1`,
-         phylogroup = `X2`) %>% 
-  mutate(assembly_id = str_sub(genome_id, 1, 15))
-
-phylogroups %>% 
-  ggplot(aes(phylogroup, fill = phylogroup)) +
-  geom_bar(show.legend = F) +
-  labs(x = "Phylogroup", y = "Number of genomes") +
-  theme_cowplot(14) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-```
-
-```{r}
-#| warning: false
-#| cache: false
-#| label: final_metadata 
-
-library(tidyverse)
-metadata_final = read_csv("tables/MAIN_ecoli_NCBI_metadata.csv") 
-
-dim_filt = metadata_final %>% dim
-```
-
-Summarising all the filtering steps I have performed:
-
-1.  filtered out genomes with a scaffold N50 lower than 150K.
-
-2.  filtered out genomes with a checkM completeness lower than 95%.
-
-3.  filtered out genomes with a checkM contamination higher than 1%.
-
-4.  filtered out genomes with a sequence length greater than 7Mbp.
-
-5.  filtered out genomes with a contig number higher than 300.
-
-6.  filtered out genomes that had a higher mash difference than 0.05.
-
-7.  filtered out genomes that were not classified as one of the main E. coli phylogroups
-
-### Lab strains
-
-In addition to the strains from the NCBI database, I have included the strains we are using in our lab. These strains are not part of the NCBI database, so they are not included in the filtering steps. In total we are adding 729 strains that belong also to the normal phylogroups as before.
-
-### Final number of strains
-
-**In summary**, if we apply all filters, we are left with **`{r} dim_filt[1]` genomes**.
-
-### Filtering strains to be analysed
-
-The distribution of the different phylogroups represented in the E. coli cohort follow a similar trend as in other research publications [@touchon2020]. The phylogroup B1 is the most represented, followed by phylogroup A and B2. The rest of the phylogroups are less represented, with phylogroup U being the least represented.
-
-```{r}
-#| warning: false
-#| cache: true
-#| label: phylogroup_plot
-
-phylo_colors = c("A" = "#1b9e77",
-                 "B1" = "#d95f02",
-                 "B2" = "#7570b3",
-                 "D" = "#e7298a",
-                 "E" = "#66a61e",
-                 "F" = "#e6ab02",
-                 "G" = "#a6761d",
-                 "C" = "#3A254D",
-                 "U" = "#666666")
-
-metadata_final %>% 
-  ggplot(aes(phylogroup, fill = phylogroup)) +
-  geom_bar(show.legend = F) +
-  labs(x = "Phylogroup", y = "Number of genomes") +
-  scale_fill_manual(values = phylo_colors) +
-  theme_cowplot(14) 
-
-```
+Representation of the number of functions (as GO terms) predicted by each of the 4 methods. The barplot represents the proportion over the total of the gene families in the reference from panaroo (total of 92435 gene families.). The Venn diagram shows the number of gene families predicted by each method and the intersections between them, colours represent the proportion of each partition in the 3 classes: core, shell and cloud genome.
+:::
 
 ## Methods
 
 ### E. coli strain selection
 
-The E. coli strains were selected from the NCBI genome database. The metadata was downloaded on January 11th 2024. The strains were filtered based on the following criteria: genomes that were not at the assembly level of "chromosome", "complete genome" or "scaffold" were removed. The scaffold N50 was used to filter out genomes with a value lower than 150K. The checkM metrics were used to filter out genomes with a completeness lower than 95% and a contamination higher than 1%. Mash distances were calculated pairwise between all genomes, and those distances that were higher than 0.05 were removed. Finally, genomes with a sequence length greater than 7Mbp, and/or genomes with a contig count higher than 300 were removed. Genomes were dowloaded with the NCBI dataset download tool (v. 16.2.0). The final number of genomes was `{r} dim_filt[1]`.
+The E. coli strains were selected from the NCBI genome database. The metadata was downloaded on January 11th 2024 and were dowloaded with the NCBI dataset download tool (v. 16.2.0). The strains were filtered based on the following criteria: genomes that were not at the assembly level of "chromosome", "complete genome" or "scaffold" were removed. The scaffold N50 was used to filter out genomes with a value lower than 150K. CheckM metrics were used to remove genomes with a completeness lower than 95% and a contamination higher than 1%. Mash distances (mash v. 1.1 @Ondov2016) were calculated pairwise between all genomes, and those strain whose mean distances were higher than 0.05 were removed. Finally, genomes with a sequence length greater than 7Mbp, and/or genomes with a contig count higher than 300 were removed. 729 strains were added from the ECOREF collection @Galardini2017, where evolution-related strains were discarded from the analysis. Phylogroups were assigned with the EzClermont v. 0.7.0 tool @Waters2020 (tool based on the approach from ClermonTyping @Beghain2018), and genomes belonging to class cryptic, U/cryptic and fails were discarded. The final number of genomes was 9558.
 
 ### Gene annotation and pangenome analysis
 
-The gene annotation was performed with Bakta (v. 1.9.3) using the full database (v. 5.1) and by default parameters. E. coli phylogroups were determined with EzClermont (v. 0.7.0) @Waters2020 based on the approach from CermonTyping @Beghain2018. Genomes that did not classify into the main E. coli phylogroups or that were cryptic were discarded for following analyses.
+Genome annotation was performed with Bakta (v. 1.9.3) using the full database (v. 5.1) using by default parameters. The pangenome was analysed with panaroo @TonkinHill2020, selecting a strict clean mode and removing invalid genes as the main parameters. Due to the complexity of this pangenome and the computation time, the pangenome was split into 5 folders containing around 2000 random genomes each, where for each folder the pangenome was calculated using the same parameters. The output from the 5 calculations was merged into the final output using the `panaroo-merge` function from the pipeline. The reference sequences from the gene families was then translated into proteins (using an custom Python script with biopython v. 1.84). Gene presence/absence matrix was used to calculate the PCA shown in Figure XXX by using the PCA function from scikit-learn v. 1.5.1.
 
-### Function prediction
+Gene presence/absence matrix was used to generate the accumulation curve (ACC) and to calculate the Heap's law. The ACC was generated by first removing gene families that were present in more than 99% of the strains, then dividing the total gene count into 50 sampling points, and randomly picking genomes for each sampling point to count the number of genes. This process was iterated over 5 times. Heap's law was calculated with the following equation:
 
-#### Proteinfer
+$$
+P = k \cdot N^{\gamma}
+$$ {#eq-heap}
 
-Reference genes from panaroo were split into 4 smaller files to fit in memory. Proteinfer @Sanderson2023 code was downloaded from github and function prediction was done by using 5 ensemble models and a reporting threshold of 0.3
-
-#### Protein embeddings with ProtT5-XL-U50
-
-The reference genes from panaroo was translated into proteins and sequences were clustered with CD-HIT v. 4.8.1 (similarity threshold of 0.98) to remove similar sequences from the dataset, resulting in 55942 unique clusters from the 57219 original sequences. The resulting file was split into 20 smaller files to fit into memory. Proteins were embedded with bio-embeddings pipeline (v.0.2.2), by using the model ProtT5-XL-U50 @Elnaggar2021 in half-precision mode. Proteins larger than 3000 amino acids were discarded to fit in memory. Transfer learning was done using available pipelines under bio-embeddings that used goPredSim @Littmann2021, using euclidean distances and a k_nearest_neighbours of 3. Prot T5 h5 file was used as a reference with GOA annotations from 2022.
-
-Functional prediction with proteinfer, protein embeddings and transfer learning was carried in a computer with an AMD Ryzen 7 7800X3D processor, 32 GB or RAM, and an RTX 4080 with 16 GB of memory, in the WSL2 platform.
+where P is the pangenome size, N is the number of genomes, and $k$ and $\gamma$ are the parameters to fit. Heap's law parameters were fitted using the average of the ACC data per point with the `nls` function in R.
 
 ### Phylogeny
 
-From the core genome from panaroo, a subset of 150 genes, present in all strains, was extracted to build the phylogenetic tree of the pangenome. Before aligning each gene per separate, as some of them were in multicopy, only one gene per genome was kept for alignment. The alignment was done using mafft @Katoh2013 (v. 7. 526), and the tree was constructed with IQ-Tree (v. 2.3.6) @Nguyen2014 with the GTR+I+G substitution model.
+From the core genome from panaroo, a subset of 275 genes, present in all strains, was extracted to build the phylogenetic tree of the pangenome. Before aligning each gene per separate, as some of them were in multicopy, only one gene per genome was kept for alignment. The alignment was done using mafft @Katoh2013 (v. 7. 526), and the tree was constructed with IQ-Tree (v. 2.3.6) @Nguyen2014 with the GTR+I+G substitution model.
+
+### GO term prediction
+
+#### Proteinfer
+
+Reference genes from panaroo were split into 4 smaller files to fit in memory. Proteinfer @Sanderson2023 code was downloaded from github and function prediction was done by using 5 ensemble models and a reporting threshold of 0.3.
+
+#### Protein embeddings with ProtT5-XL-U50
+
+The reference genes from panaroo was translated into proteins and sequences were clustered with CD-HIT v. 4.8.1 (similarity threshold of 0.98) to remove similar sequences from the dataset, resulting in 55942 unique clusters from the 57219 original sequences. The resulting file was split into 20 smaller files to fit into memory. Proteins were embedded with bio-embeddings pipeline (v.0.2.2), by using the model ProtT5-XL-U50 @Elnaggar2021 in half-precision mode. Proteins larger than 3000 amino acids were discarded to fit in memory. Transfer learning was done using available pipelines under bio-embeddings that used goPredSim @Littmann2021, using euclidean distances and a k_nearest_neighbours of 3. ProtT5 h5 file was used as a reference with GOA annotations from 2022.
+
+Functional prediction with proteinfer, protein embeddings and transfer learning was carried in a computer with an AMD Ryzen 7 7800X3D processor, 32 GB or RAM, and an RTX 4080 with 16 GB of memory, in the WSL2 platform.
+
+#### Sequence-based methods
+
+Proteins were classified using two of the most popular sequence-based methods used in the community: InterPro and eggNOG. Search in the InterPro databases was done using interproscan v. 5.59-91.0 @Jones2014 with by default parameters. The search in the eggNOG database was done using eggnog-mapper v. 2.1.12 @Cantalapiedra2021 with MMseqs2 to look novel families options enabled. Results from both methods were filtered to remove entries that had an E-value larger than 1e-5.
+
+### GO term merging
+
+Lists containing the GO terms from the different methods were merged together following a simple set of rules. GO terms from Proteinfer were filtered to include only a probability of 0.4 or higher and GO terms from eggnog-mapper and interproscan were filtered to exclude E-values above 1e-5. GO terms per method were assigned a different score depending on the method: output probabilities from Proteinfer were used as is; kNN distances from goPredSim were converted to the negative exponential ($e^{-distance}$); interproscan and eggnog-mapper E-values were converted to the negative logarithm in base 10 ($-log_{10}({E-value})$). In the case of interproscan, as outputs came from different databases, we selected the minimum E-value per GO term to avoid averaging E-values from different databases.
+
+Based on the score, GO terms were ranked per gene family and method, applying the minimum rank where ties happened. Ranks were then merged together using different methods: mean, median, min rank, max rank and the inverse of summed ranks.
+
+### Information content calculation
+
+To calculate the information content (IC) of the GO terms predicted by the different tools, we used an adaptation of the method from Barrios-Nuñez et al @BarriosNez2024 . Given that GO terms have a hierarchical structure, the deeper we go in that branch, the more information is encoded in the GO term. Taking into account that having a deep node in the branch is less likely than to have a higher node with less information, we can approximate the information content of each node by the negative logarithm of the probability for that node to show up:
+
+$$
+IC = -log_{2}(p(t))
+$$ {#eq-ic}
+
+where $p(t)$ is the probability for that node, which can be calculated as:
+
+$$
+p(t) = 1 - \frac{child \ nodes}{child \ nodes + ancestor \ nodes}
+$$ {#eq-pt}
+
+IC was calculated by joining all the GO term predictions together to create a joint library of terms for the pangenome. Given that we lack a pre-computed list of GO terms with their probabilities as exist for reference organisms, we had to calculate these probabilities from scratch. We joined together all GO term predictions from the 4 methods and kept the uniquely present GO terms. This allowed us to create a database whereby to filter the resulting steps. To calculate the number of ancestors and child nodes from each term, OWLTools was used (release 2024-06-12). The database used is the go-basic.obo from geneontology.org (accessed on October, 2024). From the joint set of unique GO terms we used the OWLTools-Runner function to get both the ancestors and descendants from each node. As the descendants from a node, specially from the ones up in the tree, can have many different child nodes depending on the final function, we removed all the GO terms that were not present in our joint dataset. The probability was calculated as defined by @eq-pt, corrected as $p(t) = p(t) + (\frac{1}{ancestor})$ for the cases where no descendant was kept in the list, but the GO term was not did not reach the bottom of the branch from the obo database.
 
 ## Software used and versions
 
@@ -345,4 +142,20 @@ From the core genome from panaroo, a subset of 150 genes, present in all strains
 
 -   mafft v. 7.526
 
-## 
+-   biopython v. 1.84
+
+-   eggnog-mapper v. 2.1.12
+
+-   scikit-learn v. 1.5.1
+
+-   OWLTools (release 2024-06-12)
+
+## Supplementary Figures
+
+![Distribution of kNN distances from the 3 main kNN from the GoPredSim results. Dashed and coloured lines represent the median of the distribution; the black line represents the peak of the distribution for the kNN 3, chosen as the threshold to filter functions from the method.](exploration/gopredsim/gopredsim_distances_capped.png){#suppfig-gopred-dist}
+
+::: {#suppfig-proteinfer-dist}
+![Distribution of GO terms per gene family](exploration/proteinfer/GO_terms_per_gene_filtered.png)
+
+![Top 20 most abundant GO terms from Proteinfer](exploration/proteinfer/GO_terms_distribution_top20.png)
+:::
