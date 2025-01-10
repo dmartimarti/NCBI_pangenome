@@ -92,7 +92,8 @@ grp = list(
 tree = tree %>% groupOTU(grp, 'phylogroup')
 
 
-ggtree(tree, layout = 'fan', size = 0.2)+ aes(color = phylogroup) +
+ggtree(tree, layout = 'fan', size = 0.2) + 
+  # aes(color = phylogroup) +
   geom_tiplab(size = .5, aes(color = phylogroup, angle = angle, show.legend = FALSE)) +
   scale_colour_manual(values = phylo_colors) + 
   guides(colour = guide_legend(override.aes = list(size = 6, pch = 18)))
@@ -101,4 +102,31 @@ ggtree(tree, layout = 'fan', size = 0.2)+ aes(color = phylogroup) +
 ggsave(file = here('exploration', 'rtree_phylogroups_distances.pdf'), 
        width = 100, 
        height = 100, units = 'mm', scale = 2, device = 'pdf')
+
+# png version
+
+
+
+p = ggtree(tree, layout = 'fan', size = 0.2) + 
+  # aes(color = phylogroup) +
+  geom_tiplab(size = .5, aes(color = phylogroup, angle = angle, show.legend = FALSE)) +
+  scale_colour_manual(values = phylo_colors) + 
+  guides(colour = guide_legend(override.aes = list(size = 6, pch = 18)))
+
+
+png("exploration/rtree_phylogroups_distances.png", 
+    width = 300, 
+    height = 300, 
+    units = "mm", res = 300)
+print(p)
+dev.off()
+
+
+
+
+
+
+
+
+
 

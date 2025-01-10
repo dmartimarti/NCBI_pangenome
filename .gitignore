@@ -72,3 +72,6 @@ code/embed_ProtT5.ipynb
 /data/interpro
 /data/progenomes
 /data/core_phylo_tree
+/references_doc
+owltools/
+code/annotations.db

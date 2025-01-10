@@ -371,12 +371,33 @@ source activate interpro
 
 WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_paralogs
 
+/rds/general/user/dmarti14/home/interproscan/interproscan.sh -i $WORK/pan_genome_reference_aa_paralogs.fa -cpu 48 -dp -d $WORK -goterms -f tsv
+
+
+
+
+# for paralogs --------------------------
+#PBS -l walltime=48:0:0
+#PBS -l select=1:ncpus=48:mem=64gb
+
+# Load modules for any applications
+
+module load anaconda3/personal
+module load java/oracle-jdk-11.0.10
+source activate interpro
+
+
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_paralogs
+
 /rds/general/user/dmarti14/home/interproscan/interproscan.sh -i $WORK/pan_genome_reference_aa.fa -cpu 48 -dp -d $WORK -goterms -f tsv
 
 
 
 
 ###### Eggnog ------------
+
+download_eggnog_data.py -F -P -M -H --data_dir /rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/eggnog_db
+
 
 #PBS -l walltime=24:0:0
 #PBS -l select=1:ncpus=40:mem=80gb
@@ -389,6 +410,22 @@ DB=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/eggnog_db
 WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_paralogs
 
 emapper.py -i $WORK/pan_genome_reference.fa -o $WORK/complete_PG_eggnogmap --data_dir $DB --override --itype CDS --cpu 40 -m novel_fams -m mmseqs
+
+
+# for paralogs --------------------------
+#PBS -l walltime=24:0:0
+#PBS -l select=1:ncpus=40:mem=80gb
+
+# Load modules for any applications
+module load anaconda3/personal
+source activate eggnog
+
+DB=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/eggnog_db
+WORK=/rds/general/project/lms-cabreiro-analysis/live/NCBI_ecoli/panaroo_results/panaroo_paralogs
+
+emapper.py -i $WORK/pan_genome_reference_paralogs.fa -o $WORK/complete_PG_eggnogmap_paralogs \
+--data_dir $DB --override --itype CDS --cpu 40 -m novel_fams -m mmseqs
+
 
 
 ### PROGENOMES DB --------------------
@@ -516,6 +553,56 @@ mkdir $WORK/phy_tree
 
 cp $WORK/core_150.aln $TMPDIR
 
-iqtree -s core_150.aln -fast -m GTR+I+G -T AUTO --threads-max 32 -v -pre core_tree
+iqtree -s core_150.aln -fast -m GTR+I+G -T AUTO --threads-max 32 32 -v -pre core_tree
 
 cp core_tree* $WORK/phy_tree
+
+
+
+
+#### transform clusters from CD-HIT to  a tsv file
+awk '/^>Cluster/ {cluster=$2} /^>/ {next} {print cluster, $1, $3}' pan_genome_reference_aa_FINAL_unique.fa.clstr | tr ',' '\t' > PCA_embeddings_clusters.tsv
+
+
+
+
+### Bio-embeddings test on the HPC -----------------------------
+
+# EXAMPLE OF CONFIG FILE
+global:
+  sequences_file: /rds/general/user/dmarti14/home/bio_embeddings/PG_data/pan_genome_reference_aa_FINAL.fa
+  prefix: PG_embeddings_UMAP
+
+t5_embeddings:
+  type: embed
+  protocol: prottrans_t5_xl_u50
+  device: cuda
+  half_precision_model: True
+  half_precision: True
+  reduce: True
+  discard_per_amino_acid_embeddings: True
+
+umap_projections:
+  type: project
+  protocol: umap
+  depends_on: t5_embeddings
+  n_components: 2
+  n_jobs: 12
+
+
+
+
+#PBS -l select=1:ncpus=12:mem=64gb:ngpus=1:gpu_type=RTX6000 -lwalltime=1:00:00
+
+module load anaconda3/personal
+module load cuda/10.2  
+module load cudnn/8.2.4 
+
+source activate bioembeddings
+
+WORK=$HOME/bio_embeddings
+
+bio_embeddings $WORK/PG_data/config_PG_embedT5_UMAP.yml
+
+# remember to change the output folder name in the config file
+cp -r $TMPDIR/PG_embeddings_UMAP $WORK
