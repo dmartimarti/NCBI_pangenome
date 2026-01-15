@@ -82,3 +82,12 @@ project_docs_files/libs/quarto-html/quarto-syntax-highlighting.css
 /data/t5_embeddings
 /data/esm2_embeddings
 /GO_prediction
+/ECOREF_phenotypes
+.RDataTmp1
+.RDataTmp2
+/attention_model_PG
+code/colibactin_lab_strains.R
+code/inputs_for_attention_models.R
+code/lab_pangenome_size.R
+/manuscript
+/mGWAS

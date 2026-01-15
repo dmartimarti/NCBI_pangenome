@@ -15,9 +15,12 @@ library(rstatix)
 library(openxlsx)
 library(glue)
 library(styler)
+library(vegan)
+library(extrafont)
 
 theme_set(theme_cowplot(14))
 
+extrafont::loadfonts()
 
 # helper functions -------------------
 
@@ -542,8 +545,9 @@ pca_data %>%
              fill = phylogroup)) +
   stat_ellipse(type = 't',
                geom  = 'polygon',
-               alpha = 0.2) +
-  geom_point(alpha = 0.8) +
+               alpha = 0.2,
+               show.legend = F) +
+  geom_point(alpha = 0.4, show.legend = F) +
   scale_color_manual(values = phylo_colors) +
   scale_fill_manual(values = phylo_colors) +
   ggrepel::geom_text_repel(
@@ -561,7 +565,9 @@ pca_data %>%
 
 
 ggsave('exploration/PCA_genePA_phylogroups.pdf',
-       height = 7, width = 9)
+       height = 5, width = 6.5)
+
+pca_data %>% write_csv("tables/PCA_gene_pa_matrix_with_metadata.csv")
 
 
 
@@ -622,6 +628,66 @@ PG_summary %>%
 
 dev.off()
 
+PG_summary %>% 
+  filter(Category != "Total genes") %>% 
+  # filter(Category != "Soft core genes") %>% 
+  # sum 433 to n_genes when Category == "Core genes"
+  # mutate(n_genes = case_when(Category == "Core genes" ~ n_genes + 433,
+  #                            TRUE ~ n_genes)) %>%
+  mutate(Category = factor(Category, 
+                           levels = c("Core genes", 
+                                      "Soft core genes", 
+                                      "Shell genes", 
+                                      "Cloud genes"))) %>%
+  ggplot(aes(x = Category, y = n_genes, fill = Category)) +
+  #lolipop plot
+  geom_segment(aes(x = Category, xend = Category, y = 0, yend = n_genes), color = "grey") +
+  geom_point(size = 5, shape = 21, color = "black",
+             show.legend = F) +
+  geom_text(aes(label = n_genes), vjust = -1) +
+  labs(x = "",
+       # log10 with subscript for y label
+       y = "Genes per category (log<sub>10</sub>)"
+       ) +
+  scale_fill_manual(values = c("Core genes" = "#1b9e77",
+                               "Soft core genes" = "#d95f02",
+                               "Shell genes" = "#7570b3",
+                               "Cloud genes" = "#e7298a")) +
+  # log scale y axis
+  # scale_y_log10() +
+  scale_y_log10(guide = "axis_logticks") +
+  theme_cowplot(12) +
+    theme(
+      axis.title.x = ggtext::element_markdown(),
+      axis.title.y = ggtext::element_markdown()
+    ) + coord_flip()
+
+ggsave("exploration/PG_summary_lollipop.pdf", width = 5, height = 2.5)
+
+
+# piechart 
+core = 2572 + 433
+shell=2917
+cloud = 86513
+  
+piechart_tbl = tibble(
+  class = c("Core", "Shell", "Cloud"),
+  n = c(core, shell, cloud)
+) %>%
+  mutate(prop = n / sum(n))
+
+piechart_tbl %>%
+  ggplot(aes(x = "", y = prop, fill = class)) +
+  geom_col(color = "black") +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = paste0(class, "\n", n)), 
+            position = position_stack(vjust = 0.5)) +
+  scale_fill_viridis_d(begin = 0.3) +
+  theme_cowplot(font_family = "Arial") +
+  theme(legend.position = "none")  
+
+ggsave("exploration/pangenome_piechart.pdf", 
+       width = 5, height = 5)
 
 # ACC analysis  ---------------------------------------------------------------
 
@@ -693,7 +759,8 @@ acc_data.sum %>%
 
 ggsave("exploration/Heap_law.pdf", width = 8, height = 7)
 
-
+acc_data.sum %>% 
+  write_csv("tables/acc_data_summary.csv")
 
 # Gene lists partition ----------------------------------------------------
 
@@ -926,6 +993,13 @@ proteinfer %>%
 proteinfer %>% 
   write_csv("GO_merge/proteinfer_tidy_FINAL.csv")
 
+proteinfer %>% 
+  filter(str_detect(predicted_label, "Pfam")) %>% 
+  distinct(predicted_label) %>% nrow()
+
+proteinfer %>% 
+  filter(str_detect(predicted_label, "Pfam")) %>% 
+  distinct(sequence_name) %>% nrow()
 
 #### proteinfer metadata -----------
 
@@ -1519,7 +1593,7 @@ upset(
 ggsave("exploration/gene_families_GO_venn.pdf", width = 12, height = 8)
 ggsave("exploration/gene_families_GO_venn.png", width = 15, height = 10)
 
-
+genes_methods_classes %>% write_csv("tables/gene_families_GO_venn.csv")
 
 
 upset(
@@ -1551,7 +1625,7 @@ upset(
 
 
 
-x# save the gene functions data
+# save the gene functions data
 genes_methods_classes %>% 
   write_csv("tables/function_methods_data.csv")
 
@@ -1789,6 +1863,8 @@ ggsave("exploration/gene_functions_analysis/IC_content_maxIC_boxplot.pdf",
 ggsave("exploration/gene_functions_analysis/IC_content_maxIC_boxplot.png",
        height = 8, width = 12)
 
+max_ic %>% 
+  write_csv("tables/IC_content_maxIC_per_gene.csv")
 
 ## analysis of shared genes -----------------------------------
 
@@ -2225,12 +2301,12 @@ pca_embeddings %>%
                              levels = c("Core", "Shell", "Cloud")),
          PC = factor(PC)) %>% 
   filter(value > quantile(value, 0.025)) %>%
-  ggviolin(x = "PC", y = "value",
+  ggpubr::ggviolin(x = "PC", y = "value",
             color = "black", 
             fill = "gene_group",
            add = "boxplot",
-           add.params = list(
-                             width = 0.1),
+           size = 0.001,
+           add.params = list(width = 0.1),
             # facet.by = "PC",
             # facet in 4 columns
             ncol = 2,
@@ -2245,7 +2321,7 @@ pca_embeddings %>%
   )
 
 ggsave("exploration/t5_embeddings/pca_projection_T5_gene_groups_axes.pdf",
-       width = 7, height = 5)
+       width = 4, height = 4)
 ggsave("exploration/t5_embeddings/pca_projection_T5_gene_groups_axes.png",
        width = 7, height = 5)
 
@@ -2339,16 +2415,18 @@ marginal_cog_plotter <- function(
     filter(COG_category == cog) %>%
     ggplot(aes(x = pc1, y = pc2,
                color = gene_group)) +
-    geom_point(alpha = point_alpha) +
+    geom_point(alpha = point_alpha,
+               show.legend = F) +
     # 2d density
-    geom_density_2d(contour_var = "ndensity",
-                    linewidth = 0.35,
-                    alpha = 0.6,
-                    aes(color = gene_group)) +
+    # geom_density_2d(contour_var = "ndensity",
+    #                 linewidth = 0.35,
+    #                 alpha = 0.6,
+    #                 aes(color = gene_group)) +
     scale_color_manual(values = gene_class_colors) +
     labs(title = glue::glue("COG category: {cog}"),
          x = glue("Principal component 1 ({per_var[1]})"), 
          y = glue("Principal component 2 ({per_var[2]})")) +
+    theme_cowplot(7, font_family = "Arial") +
     ylim(-22,22) +
     xlim(-50, 15)
   
@@ -2368,13 +2446,46 @@ for (cog in COG_cats) {
   p = marginal_cog_plotter(cog = cog)
   ggsave(plot = p, 
          filename = glue::glue("exploration/t5_embeddings/PCA_COG/pca_projection_T5_COG_{cog}.pdf"),
-         width = 8, height = 6)
+         width = 5, height = 4)
   ggsave(plot = p,
          filename = glue::glue("exploration/t5_embeddings/PCA_COG/pca_projection_T5_COG_{cog}.png"),
-         width = 8, height = 6)
+         width = 5, height = 4)
 }
 
 
+
+
+# with facet wrap ---------------------------------------------------------
+
+eggnog_cog_cat %>%
+  left_join(  pca_embeddings ) %>% 
+  left_join(gene_presence %>% 
+              rename(original_id = Gene)) %>%
+  arrange(desc(gene_group)) %>%
+  drop_na(gene_group) %>%
+  mutate(gene_group = factor(gene_group, 
+                             levels = c("Core", "Shell", "Cloud"))) %>%
+  filter(COG_category %in% COG_cats) %>%
+  # filter(COG_category == "C") %>% 
+  ggplot(aes(x = pc1, y = pc2,
+             color = gene_group)) +
+  geom_point(alpha = 0.1) +
+  # 2d density
+  # geom_density_2d(contour_var = "ndensity",
+  #                 linewidth = 0.35,
+  #                 alpha = 0.6,
+  #                 aes(color = gene_group)) +
+  scale_color_manual(values = gene_class_colors) +
+  labs(x = glue("Principal component 1 ({per_var[1]})"), 
+       y = glue("Principal component 2 ({per_var[2]})")) +
+  facet_wrap(~COG_category, nrow = 2) +
+  ylim(-22,22) +
+  xlim(-50, 15)
+
+p = ggMarginal(p,
+               type = "density",
+               groupColour = TRUE,
+               groupFill = TRUE)
 
 
 ## PC1 and PC2 analysis ---------------------------------------------------
@@ -2473,6 +2584,252 @@ ggsave("exploration/t5_embeddings/pca_projection_T5_COG_boxplot.png",
        width = 12, height = 8)
 
 
+### prot embd PAPER version -----------
+
+p1 = pca_eggnog_long %>% 
+  left_join(cog_cat_metadata) %>% 
+  filter(!(COG_category %in% c("B", "W", "Y"))) %>% 
+  arrange(COG_category) %>% 
+  mutate(gene_group = factor(gene_group, 
+                             levels = c("Core", "Shell", "Cloud"))) %>% 
+  filter(Major_category == "Cellular processes and signaling") %>% 
+  ggpubr::ggboxplot(x = "COG_category", y = "value",
+                    color = "black", 
+                    fill = "gene_group",
+                    facet.by = c("PC", "Major_category"),
+                    # facet in 4 columns
+                    scales = "free",
+                    ncol = 1,
+                    short.panel.labs = FALSE,
+                    palette = gene_class_colors) +
+  labs(x = NULL) +
+  
+  theme_cowplot(font_family = "Arial") +
+  ggpubr::stat_pvalue_manual(pca_cog_stats %>% 
+                               filter(Major_category == "Cellular processes and signaling"), 
+                             label = "p.adj.signif",
+                             tip.length = 0.01,
+                             hide.ns = F,
+                             scales = "free") 
+
+p2 = pca_eggnog_long %>% 
+  left_join(cog_cat_metadata) %>% 
+  filter(!(COG_category %in% c("B", "W", "Y"))) %>% 
+  arrange(COG_category) %>% 
+  mutate(gene_group = factor(gene_group, 
+                             levels = c("Core", "Shell", "Cloud"))) %>% 
+  filter(Major_category == "Information storage and processing") %>% 
+  ggpubr::ggboxplot(x = "COG_category", y = "value",
+                    color = "black", 
+                    fill = "gene_group",
+                    facet.by = c("PC", "Major_category"),
+                    # facet in 4 columns
+                    scales = "free",
+                    ncol = 1,
+                    short.panel.labs = FALSE,
+                    palette = gene_class_colors) +
+  
+  theme_cowplot(font_family = "Arial") +
+  labs(y = NULL) + 
+  theme(axis.text.y = element_blank()) +
+  ggpubr::stat_pvalue_manual(pca_cog_stats %>% 
+                               filter(Major_category == "Information storage and processing"), 
+                             label = "p.adj.signif",
+                             tip.length = 0.01,
+                             hide.ns = F,
+                             scales = "free") 
+
+
+p3 = pca_eggnog_long %>% 
+  left_join(cog_cat_metadata) %>% 
+  filter(!(COG_category %in% c("B", "W", "Y"))) %>% 
+  arrange(COG_category) %>% 
+  mutate(gene_group = factor(gene_group, 
+                             levels = c("Core", "Shell", "Cloud"))) %>% 
+  filter(Major_category == "Metabolism") %>% 
+  ggpubr::ggboxplot(x = "COG_category", y = "value",
+                    color = "black", 
+                    fill = "gene_group",
+                    facet.by = c("PC", "Major_category"),
+                    # facet in 4 columns
+                    scales = "free",
+                    ncol = 1,
+                    short.panel.labs = FALSE,
+                    palette = gene_class_colors) +
+  labs(x = NULL, y = NULL) +
+  
+  theme_cowplot(font_family = "Arial") +
+  theme(axis.text.y = element_blank()) +
+  ggpubr::stat_pvalue_manual(pca_cog_stats %>% 
+                               filter(Major_category == "Metabolism"), 
+                             label = "p.adj.signif",
+                             tip.length = 0.01,
+                             hide.ns = F,
+                             scales = "free") 
+
+
+p4 = pca_eggnog_long %>% 
+  left_join(cog_cat_metadata) %>% 
+  filter(!(COG_category %in% c("B", "W", "Y"))) %>% 
+  arrange(COG_category) %>% 
+  mutate(gene_group = factor(gene_group, 
+                             levels = c("Core", "Shell", "Cloud"))) %>% 
+  filter(Major_category == "Poorly characterized") %>% 
+  ggpubr::ggboxplot(x = "COG_category", y = "value",
+                    color = "black", 
+                    fill = "gene_group",
+                    facet.by = c("PC", "Major_category"),
+                    # facet in 4 columns
+                    scales = "free",
+                    ncol = 1,
+                    short.panel.labs = FALSE,
+                    palette = gene_class_colors) +
+  theme_cowplot(font_family = "Arial") +
+  labs(x = NULL, y = NULL) +
+  theme(axis.text.y = element_blank()) +
+  ggpubr::stat_pvalue_manual(pca_cog_stats %>% 
+                               filter(Major_category == "Poorly characterized"), 
+                             label = "p.adj.signif",
+                             tip.length = 0.01,
+                             hide.ns = F,
+                             scales = "free") 
+
+
+p1 + p2 + p3 + p4 + plot_layout(nrow = 1, 
+                                guides = 'collect',
+                                widths = c(7, 4, 8, 1)) 
+
+
+ggsave("exploration/t5_embeddings/pca_projection_T5_COG_boxplot_width.pdf",
+       width = 16, height = 7)
+
+
+### heatmap of PCA values --------------------------
+pl1 = pca_eggnog_long %>% 
+  left_join(cog_cat_metadata) %>% 
+  filter(!(COG_category %in% c("B", "W", "Y"))) %>% 
+  arrange(COG_category) %>% 
+  group_by(PC, COG_category,gene_group, Major_category) %>%
+  summarise(median = median(value, na.rm = TRUE),
+            `25th` = quantile(value, 0.25, na.rm = TRUE),
+            `75th` = quantile(value, 0.75, na.rm = TRUE),
+            n = n()) %>% 
+  drop_na(gene_group) %>%
+  mutate(gene_group = factor(gene_group, 
+                             levels = c("Core", "Shell", "Cloud"))) %>% 
+  filter(PC == "PC1") %>% 
+  ggplot(aes(y = COG_category, x = gene_group)) +
+  geom_tile(aes(fill = median), color = "white") +
+  scale_fill_viridis_c("Median\nPC value") +
+  scale_alpha_continuous(range = c(0.3, 1), guide = "none") +
+  geom_text(aes(label = round(median, 2)), color = "salmon", size = 2) +
+  facet_wrap(vars(PC, Major_category), ncol = 4, scales = "free") +
+  theme_cowplot(8) +
+  coord_flip() 
+
+pl2 = pca_eggnog_long %>% 
+  left_join(cog_cat_metadata) %>% 
+  filter(!(COG_category %in% c("B", "W", "Y"))) %>% 
+  arrange(COG_category) %>% 
+  group_by(PC, COG_category,gene_group, Major_category) %>%
+  summarise(median = median(value, na.rm = TRUE),
+            `25th` = quantile(value, 0.25, na.rm = TRUE),
+            `75th` = quantile(value, 0.75, na.rm = TRUE),
+            n = n()) %>% 
+  drop_na(gene_group) %>% 
+  filter(PC == "PC2") %>% 
+  mutate(gene_group = factor(gene_group, 
+                             levels = c("Core", "Shell", "Cloud"))) %>% 
+  ggplot(aes(y = COG_category, x = gene_group)) +
+  geom_tile(aes(fill = median), color = "white") +
+  scale_fill_viridis_c("Median\nPC value") +
+  scale_alpha_continuous(range = c(0.3, 1), guide = "none") +
+  geom_text(aes(label = round(median, 2)), color = "salmon", size = 2) +
+  facet_wrap(vars(PC, Major_category), ncol = 4, scales = "free") +
+  theme_cowplot(8) +
+  coord_flip() 
+
+pl1 / pl2
+
+ggsave("exploration/t5_embeddings/pca_projection_T5_COG_heatmap.pdf",
+       width = 12, height = 7)
+
+
+### heatmap of differences -----------
+
+
+hm1 = pca_eggnog_long %>% 
+  left_join(cog_cat_metadata) %>% 
+  filter(!(COG_category %in% c("B", "W", "Y","A"))) %>% 
+  arrange(COG_category) %>% 
+  group_by(PC, COG_category,gene_group, Major_category) %>%
+  summarise(median = median(value, na.rm = TRUE)) %>% 
+  drop_na(gene_group) %>% 
+  # pairwise differences between gene groups per PC
+  pivot_wider(names_from = gene_group, values_from = median) %>%
+  mutate(diff_Core_Shell = Core - Shell,
+         diff_Core_Cloud = Core - Cloud,
+         diff_Shell_Cloud = Shell - Cloud) %>% 
+  pivot_longer(cols = starts_with("diff_"), 
+               names_to = "comparison",
+               values_to = "median_diff") %>%
+  mutate(comparison = str_replace_all(comparison, "diff_", ""),
+         comparison = str_replace_all(comparison, "_", " vs "),
+         median_diff = abs(median_diff)) %>%
+  mutate(comparison = factor(comparison, 
+                             levels = c("Core vs Cloud",
+                                        "Shell vs Cloud",                                        
+                                        "Core vs Shell"))) %>%
+  filter(PC == "PC1") %>% 
+  ggplot(aes(y = COG_category, x = comparison)) +
+  geom_tile(aes(fill = median_diff), color = "white") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", 
+                       midpoint = 0,
+                       name = "Median\nPC1 difference") +
+  geom_text(aes(label = round(median_diff, 2)), color = "black", size = 2) +
+  facet_wrap(vars(PC, Major_category), ncol = 4, scales = "free") +
+  theme_cowplot(8) +
+  coord_flip()
+
+
+hm2 = pca_eggnog_long %>% 
+  left_join(cog_cat_metadata) %>% 
+  filter(!(COG_category %in% c("B", "W", "Y", "A"))) %>% 
+  arrange(COG_category) %>% 
+  group_by(PC, COG_category,gene_group, Major_category) %>%
+  summarise(median = median(value, na.rm = TRUE)) %>% 
+  drop_na(gene_group) %>% 
+  # pairwise differences between gene groups per PC
+  pivot_wider(names_from = gene_group, values_from = median) %>%
+  mutate(diff_Core_Shell = Core - Shell,
+         diff_Core_Cloud = Core - Cloud,
+         diff_Shell_Cloud = Shell - Cloud) %>% 
+  pivot_longer(cols = starts_with("diff_"), 
+               names_to = "comparison",
+               values_to = "median_diff") %>%
+  mutate(comparison = str_replace_all(comparison, "diff_", ""),
+         comparison = str_replace_all(comparison, "_", " vs "),
+         median_diff = abs(median_diff)) %>%
+  mutate(comparison = factor(comparison, 
+                             levels = c("Core vs Cloud",
+                                        "Shell vs Cloud",                                        
+                                        "Core vs Shell"))) %>%
+  filter(PC == "PC2") %>% 
+  ggplot(aes(y = COG_category, x = comparison)) +
+  geom_tile(aes(fill = median_diff), color = "white") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", 
+                       midpoint = 0,
+                       name = "Median\nPC1 difference") +
+  geom_text(aes(label = round(median_diff, 2)), color = "black", size = 2) +
+  facet_wrap(vars(PC, Major_category), ncol = 4, scales = "free") +
+  theme_cowplot(8) +
+  coord_flip()
+
+hm1 / hm2
+
+ggsave("exploration/t5_embeddings/pca_projection_T5_COG_heatmap_differences.pdf",
+       width = 12, height = 7)
+
 
 ### barplot of n elements per COG category, major category, gene group and PC
 
@@ -2512,7 +2869,7 @@ genes_with_cog = eggnog_cog_cat %>%
 (genes_with_cog / dim(gene_presence)[1]) * 100
 
 
-# Strain T5 embedding average integration ------------------------------------
+# Strain T5 embedding addition integration ------------------------------------
 
 ## Data preparation ------------------
 ### T5 embeddings =========================
@@ -2571,15 +2928,14 @@ gene_removals = unique(c(missing_embeddings, core_genes))
 # read the gene PA matrix and transpose it
 gene_pa = read_delim("data/panaroo_results/gene_presence_absence.Rtab", 
                      delim = "\t", escape_double = FALSE, 
-                     trim_ws = TRUE)
-
-gene_pa = gene_pa %>% 
+                     trim_ws = TRUE) %>% 
   filter(!(Gene %in% gene_removals)) 
 
 gc()
 
-reduced_embeddings = reduced_embeddings %>% 
-  filter(!(original_id %in% gene_removals)) 
+# remove core genes from the gene presence absence matrix (optional)
+# reduced_embeddings = reduced_embeddings %>% 
+#   filter(!(original_id %in% gene_removals)) 
 
 gene_pa$Gene
 # fix missmatches 
@@ -2612,7 +2968,7 @@ gene_pa = gene_pa %>%
 gene_pa
 
 
-## matrix multiplication ================================================
+# Embedding addition method: matrix multiplication ================================================
 
 genes_embedd = reduced_embeddings$original_id
 genomes_embedd = gene_pa$genome
@@ -2644,12 +3000,150 @@ rownames(strain_embeddings)
 
 strain_embeddings[1, ]
 
-
-
 # save the strain embeddings
 write_csv(strain_embeddings %>% 
             as_tibble(rownames = "genome"), 
-          "data/t5_embeddings/t5_embeddings/strain_embeddings.csv")
+          "data/t5_embeddings/t5_embeddings/strain_embeddings_ADDITION.csv")
+
+
+# Embedding average method ----------------------------------------
+
+# average the embeddings for each genome
+dim(gene_pa_matrix)
+
+# get the number of genes per strain, and divide the strain_embeddings by this number
+
+strain_n_genes = gene_pa_matrix %>% 
+  rowSums() 
+
+
+length(strain_n_genes)
+dim(strain_embeddings)
+
+
+strain_embeddings_av = strain_embeddings / strain_n_genes
+
+
+strain_embeddings_av %>% as_tibble()
+
+strain_embeddings_av %>% 
+  as_tibble(rownames = "genome") %>% 
+  write_csv("tables/strain_embeddings_AVERAGE.csv")
+
+
+# WEIGHTED Embedding average method ---------------------------------------
+
+# calculate weights per gene based on inverse document frequency idea
+# the more common a gene is, the less weight it will have
+# should be the log(1/prop) where prop is the proportion of genomes that have the gene
+
+gene_weights = gene_presence %>% 
+  mutate(inv_log_prop =  log(1/ gene_prop)) %>% 
+  # remove genes
+  filter(Gene %in% colnames(gene_pa_matrix)) %>% 
+  arrange(desc(inv_log_prop)) %>% 
+  select(Gene, inv_log_prop) %>% 
+  column_to_rownames("Gene") 
+
+# reorder gene_weights to match the order of the embeddings
+gene_weights = gene_weights[rownames(embeddings),]
+
+# calculate Sum of Weights for Strain
+strain_weights = gene_pa_matrix %*% gene_weights
+
+# calculate the weighted average
+strain_embeddings_w_av = gene_pa_matrix %*% (embeddings * gene_weights)
+
+# divide by the sum of weights
+# reorder strain_weights to follow strain_embeddings_w_av
+strain_weights = strain_weights[rownames(strain_embeddings_w_av),]
+
+strain_embeddings_w_av = strain_embeddings_w_av / strain_weights
+
+strain_embeddings_w_av %>% 
+  as_tibble(rownames = "genome") %>% 
+  write_csv("tables/strain_embeddings_WEIGHTED_AVERAGE.csv")
+
+
+# Strain embeddings COG average -------------------------------------------
+
+
+genes_embedd = reduced_embeddings$original_id
+genomes_embedd = gene_pa$genome
+
+eggnog_cog_cat %>% 
+  count(COG_category) %>% 
+  filter(!(COG_category %in% c("A", "B")))
+
+COG_cats = eggnog_cog_cat %>% 
+  count(COG_category) %>% 
+  filter(!(COG_category %in% c("A", "B"))) %>% 
+  pull(COG_category)
+
+
+embeddings = reduced_embeddings %>% 
+  column_to_rownames("original_id") %>% 
+  as.matrix
+
+gene_pa_matrix = gene_pa %>% 
+  column_to_rownames("genome") %>% 
+  as.matrix
+
+### create embeddings per category ----------
+
+for (cat in COG_cats) {
+  
+  print(glue("COG category: {cat}"))
+  
+  genes_cog_cat = eggnog_cog_cat %>% 
+    filter(COG_category == cat) %>% 
+    distinct(original_id) %>%
+    pull(original_id) 
+  
+  # filter embeddings with genes in COG category C
+  embeddings_cog = reduced_embeddings %>% 
+    filter(original_id %in% genes_cog_cat) %>%
+    column_to_rownames("original_id") %>% 
+    as.matrix
+  
+  # filter gene presence absence matrix with genes in COG category 
+  print(glue("Number of genes in COG category {cat}: {length(genes_cog_cat)}"))
+
+
+  gene_pa_matrix_cog = gene_pa_matrix[, colnames(gene_pa_matrix) %in% genes_cog_cat]
+  
+  # make sure dimensions match
+  print("Testing dimensions match")
+  print(dim(gene_pa_matrix_cog)[2] == dim(embeddings_cog)[1])
+  
+  # get the number of genes per strain, and divide the strain_embeddings by this number
+  strain_n_genes_cog = gene_pa_matrix_cog %>% rowSums() 
+  
+  
+  length(strain_n_genes_cog) == dim(strain_embeddings)[1]
+  
+  
+  # matrix multiplication
+  strain_embeddings_cog = gene_pa_matrix_cog %*% embeddings_cog
+  strain_embeddings_av_cog = strain_embeddings_cog / strain_n_genes_cog
+  
+  
+  strain_embeddings_av_cog %>% as_tibble()
+  
+  
+  
+  strain_embeddings_av_cog %>% 
+    as_tibble(rownames = "genome") %>% 
+    write_csv(glue("tables/strain_embeddings_COG/strain_embeddings_cog_{cat}.csv"))
+
+}
+
+
+
+
+
+
+# remove big variables ----------------------------------------------------
 
 
 # remove heavy objects
@@ -2659,7 +3153,7 @@ gc()
 
 
   
-## PCA from strain embeddings --------------
+# PCA from strain embeddings --------------
 
 
 pc = prcomp(strain_embeddings,
@@ -2733,13 +3227,554 @@ ggsave("exploration/strain_embeddings/pca_strain_embeddings_density.png",
        width = 10, height = 8)
 
 
-### compose plot of PC1 and PC2 with phylogroups -------
 
-pca_strains = pc_tb %>% 
+# PCA of av strain embeddings ---------------------------------------------
+
+## average strain embeddings ---------------
+
+pc_av = prcomp(strain_embeddings_av,
+             center = TRUE,
+             scale. = TRUE)
+
+
+pc_av_tb = pc_av %>% broom::tidy() %>%
+  filter(PC %in% c(1:100))
+
+var_exp_tbl_av = summary(pc_av)$importance %>%
+  as_tibble(rownames = "cosa") %>% 
+  select(cosa, PC1:PC20)
+
+pc_av_tb = pc_av_tb %>% 
+  mutate(row = case_when(str_detect(row, "^(NT\\d{5})_\\d+") ~ str_sub(row, 1, 7),
+                         TRUE ~ row))
+
+pca_strains_av = pc_av_tb %>%
   filter(PC %in% c(1,2)) %>% 
   pivot_wider(names_from = PC, values_from = value, names_prefix = "PC") %>% 
   left_join(metadata_final %>%  select(row = assembly_id_simp, phylogroup)) %>% 
-  drop_na(phylogroup) 
+  drop_na(phylogroup)
+
+pca_strains_av %>%
+  ggplot(aes(x = PC1, y = PC2, color = phylogroup)) +
+  geom_point(alpha = 0.6, size = 3) +
+  scale_color_manual(values = phylo_colors) +
+  theme_cowplot(14) +
+  labs(title = "PCA projection of strain embeddings",
+       subtitle = "Color by phylogroup",
+       x = glue("Principal component 1 ({round(var_exp_tbl_av[2,2]*100, 2)}%)"), 
+       y = glue("Principal component 2 ({round(var_exp_tbl_av[2,3]*100, 2)}%)"))
+
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_av.pdf",
+       width = 10, height = 8)
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_av.png",
+       width = 10, height = 8)
+
+pca_strains_av %>% write_csv("tables/pca_strain_embeddings_av.csv")
+
+
+## PAPER VERSION ----------------------------
+# plot strain embeddings with densities on the sides with ggmarginal 
+
+pca_strains_av %>% 
+  write_csv("tables/pca_strain_embeddings_av.csv")
+
+p = pca_strains_av %>%
+  ggplot(aes(x = PC1, y = PC2, color = phylogroup)) +
+  geom_point(alpha = 0.6, size = 3) +
+  scale_color_manual(values = phylo_colors) +
+  theme_cowplot(14) +
+  labs(x = glue("Principal component 1 ({round(var_exp_tbl_av[2,2]*100, 2)}%)"), 
+       y = glue("Principal component 2 ({round(var_exp_tbl_av[2,3]*100, 2)}%)"))
+
+p = ggMarginal(p,
+               type = "density",
+               alpha = 0.4,
+               groupColour = TRUE,
+               groupFill = TRUE)
+
+p
+
+ggsave(plot = p, 
+       "exploration/strain_embeddings/pca_strain_embeddings_av_marginal.pdf",
+       width = 8, height = 6)
+ggsave(plot = p, 
+       "exploration/strain_embeddings/pca_strain_embeddings_av_marginal.png",
+       width = 8, height = 6)
+
+
+
+## facets
+
+pca_strains_av %>%
+  ggplot(aes(x = PC1, y = PC2, color = phylogroup)) +
+  geom_point(alpha = 0.6, size = 3) +
+  scale_color_manual(values = phylo_colors) +
+  theme_cowplot(14) +
+  labs(title = "PCA projection of strain embeddings",
+       subtitle = "Color by phylogroup",
+       x = glue("Principal component 1 ({round(var_exp_tbl_av[2,2]*100, 2)}%)"), 
+       y = glue("Principal component 2 ({round(var_exp_tbl_av[2,3]*100, 2)}%)")) +
+  facet_wrap(~phylogroup)
+
+
+# boxplot of PC1 and 2 by phylogroup
+pca_strains_av %>%
+  drop_na(phylogroup) %>%
+  filter(phylogroup != "U") %>% 
+  pivot_longer(cols = starts_with("PC"), 
+               names_to = "PC", values_to = "value") %>%
+  mutate(phylogroup = factor(phylogroup, 
+                             levels = c("A", "B1", "C", "D", "E", "F", "G", "B2")  
+         )) %>%
+  filter(PC == "PC2") %>% 
+  ggplot(aes(x = phylogroup, y = value, fill = phylogroup)) +
+  geom_boxplot(show.legend = F, 
+               outliers = F,
+               lwd=0.5) +
+  geom_jitter(width = 0.2, alpha = 0.2, size = .1, show.legend = F) +
+  scale_fill_manual(values = phylo_colors) +
+  # facet_wrap(~PC, scales = "free_y") +
+  theme_cowplot(7, font_family = "Arial") +
+  labs(x = NULL, 
+       y = "Principal component value")
+
+
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_av_boxplot_PC2.pdf",
+       width = 4, height = 6)
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_av_boxplot_PC2.png",
+       width = 4, height = 6)
+
+
+# violin plot
+pca_strains_av %>%
+  drop_na(phylogroup) %>%
+  filter(phylogroup != "U") %>% 
+  pivot_longer(cols = starts_with("PC"), 
+               names_to = "PC", values_to = "value") %>%
+  mutate(phylogroup = factor(phylogroup, 
+                             levels = c("A", "B1", "C", "D", "E", "F", "G", "B2")  
+  )) %>%
+  filter(PC == "PC2") %>%
+  ggplot(aes(x = phylogroup, y = value, fill = phylogroup)) +
+  geom_violin(show.legend = F, 
+               lwd=0.5, alpha = 0.7) +
+  geom_boxplot(width=0.1, color="black", 
+               alpha=0.2, lwd = 0.25,
+               show.legend = F) +
+  # geom_jitter(width = 0.2, alpha = 0.2, size = .1, show.legend = F) +
+  scale_fill_manual(values = phylo_colors) +
+  # facet_wrap(~PC, scales = "free_y") +
+  theme_cowplot(7, font_family = "Arial") +
+  labs(x = NULL, 
+       y = "Principal component value")
+
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_av_violin_PC2.pdf",
+       width = 4, height = 6)
+
+
+pca_strains_av %>%
+  drop_na(phylogroup) %>%
+  filter(phylogroup != "U") %>% 
+  pivot_longer(cols = starts_with("PC"), 
+               names_to = "PC", values_to = "value") %>%
+  mutate(phylogroup = factor(phylogroup, 
+                             levels = c("A", "B1", "C", "D", "E", "F", "G", "B2")  
+  )) %>%
+  # filter(PC == "PC2") %>% 
+  ggplot(aes(x = phylogroup, y = value, fill = phylogroup)) +
+  geom_boxplot(show.legend = F, 
+               outliers = F,
+               lwd=0.5) +
+  geom_jitter(width = 0.2, alpha = 0.2, size = .1, show.legend = F) +
+  scale_fill_manual(values = phylo_colors) +
+  facet_wrap(~PC, scales = "free_y") +
+  theme_cowplot(7, font_family = "Arial") +
+  labs(x = NULL, 
+       y = "Principal component value")
+
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_av_boxplot_PC1_PC2.pdf",
+       width = 8, height = 6)
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_av_boxplot_PC1_PC2.png",
+       width = 8, height = 6)
+
+pca_strains_av %>%
+  drop_na(phylogroup) %>%
+  filter(phylogroup != "U") %>% 
+  pivot_longer(cols = starts_with("PC"), 
+               names_to = "PC", values_to = "value") %>%
+  mutate(phylogroup = factor(phylogroup, 
+                             levels = c("A", "B1", "C", "D", "E", "F", "G", "B2")  
+  )) %>% 
+  # violin plot
+  ggplot(aes(x = phylogroup, y = value, fill = phylogroup)) +
+  geom_violin(show.legend = F, 
+              lwd=0.5, alpha = 0.7) +
+  geom_boxplot(width=0.1, color="black", 
+               alpha=0.2, lwd = 0.25,
+               show.legend = F) +
+  # geom_jitter(width = 0.2, alpha = 0.2, size = .1, show.legend = F) +
+  scale_fill_manual(values = phylo_colors) +
+  facet_wrap(~PC, scales = "free_y") +
+  theme_cowplot(13, font_family = "Arial") +
+  labs(x = NULL, 
+       y = "Principal component value")
+
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_av_violin_PC1_PC2.pdf",
+       width = 6, height = 4)
+
+
+# pairwise stats
+pca_strains_av %>%
+  drop_na(phylogroup) %>%
+  filter(phylogroup != "U") %>% 
+  pivot_longer(cols = starts_with("PC"), 
+               names_to = "PC", values_to = "value") %>%
+  mutate(phylogroup = factor(phylogroup, 
+                             levels = c("A", "B1", "C", "D", "E", "F", "G", "B2")  
+  )) %>%
+  group_by(PC) %>%
+  rstatix::pairwise_wilcox_test(value ~ phylogroup,
+                                p.adjust.method = "BH",
+                                detailed = TRUE) %>%
+  filter(PC %in% c("PC1", "PC2")) %>%
+  write_csv("tables/pca_strain_embeddings_av_pairwise_phylogroup.csv")
+
+
+## PERMANOVA test ---------
+
+set.seed(123) # for reproducibility
+unique_strains = unique(pca_strains_av$row)
+
+# Filter for PC1 and PC2 and pivot wider ---
+
+# data_for_permanova = pca_strains_av
+
+data_for_permanova = pc_av_tb %>% 
+  mutate(row = case_when(str_detect(row, "^(NT\\d{5})_\\d+") ~ str_sub(row, 1, 7),
+                         TRUE ~ row)) %>% 
+  filter(PC %in% c(1:100)) %>%
+  pivot_wider(names_from = PC, values_from = value, names_prefix = "PC") %>%
+  rename(strain = row) %>% 
+  left_join(pca_strains_av %>% select(strain = row, phylogroup))
+
+
+
+# Ensure the data matrix for adonis2 contains only the PC components
+# and the grouping variable is separate.
+# The data matrix for adonis2 should NOT contain the grouping variable.
+pca_components_matrix = data_for_permanova %>%
+  select(PC1:PC100) %>%
+  as.data.frame() # adonis2 works best with data frames or matrices
+
+# check if there are NA values 
+if (any(is.na(pca_components_matrix))) {
+  stop("There are NA values in the PCA components matrix. Please handle them before running PERMANOVA.")
+}
+
+# Extract the grouping variable
+grouping_variable <- data_for_permanova$phylogroup
+
+if (any(is.na(grouping_variable))) {
+  stop("There are NA values in the grouping variable. Please handle them before running PERMANOVA.")
+}
+
+# Perform PERMANOVA
+# Formula: Your response matrix ~ Your grouping variable
+# `data` argument for adonis2 should be a data frame containing all variables in the formula.
+# However, for a distance matrix approach (which adonis2 internally uses when given a data matrix),
+# the response can be a matrix, and the grouping variable can be provided separately.
+
+# Method 1: Using the data frame directly (recommended for clarity)
+# Make sure the 'group' column is in the same data frame passed to adonis2
+permanova_result <- adonis2(pca_components_matrix ~ phylogroup,
+                            method = "euclidean",
+                            data = data_for_permanova,
+                            permutations = 100)
+
+# Method 2: If you prefer to explicitly calculate a distance matrix first
+# (though adonis2 does this internally if you provide a data matrix)
+# You could calculate Euclidean distance for the PCA components
+dist_matrix <- dist(pca_components_matrix, 
+                    method = "euclidean")
+
+permanova_result_dist = adonis2(dist_matrix ~ grouping_variable, 
+                                data = data_for_permanova, 
+                                permutations = 100)
+
+
+print(permanova_result)
+
+summary(permanova_result)
+
+
+
+
+## PERMANOVA with embeddings -----------------------------------------------
+
+strain_embeddings_av_meta = strain_embeddings_av %>% 
+  as_tibble(rownames = "genome") %>% 
+  mutate(genome = case_when(str_detect(genome, "^(NT\\d{5})_\\d+") ~ str_sub(genome, 1, 7),
+                         TRUE ~ genome)) %>% 
+  left_join(metadata_final %>% 
+              select(genome = assembly_id_simp, phylogroup)) %>% 
+  drop_na(genome) 
+
+
+dist_av_emb = vegdist(strain_embeddings_av, 
+                     method = "euclidean")
+
+grouping_variable_av_emb = strain_embeddings_av_meta$phylogroup
+
+# Perform PERMANOVA on the strain embeddings
+permanova_result_av_emb <- adonis2(dist_av_emb ~ grouping_variable_av_emb,
+                                   data = strain_embeddings_av_meta,
+                                   permutations = 100)
+
+print(permanova_result_av_emb)
+
+broom::tidy(permanova_result_av_emb) %>% 
+  filter(term == "Model")
+
+broom::tidy(permanova_result_av_emb) %>% 
+  write_csv("tables/permanova_strain_embeddings_av.csv")
+
+
+
+# PCA from COG embeddings -------------------------------------------------
+
+# list of csv files in tables/strain_embeddings_COG/
+cog_files = list.files("tables/strain_embeddings_COG", 
+                       pattern = "strain_embeddings_cog_", 
+                       full.names = TRUE)
+
+
+
+
+for (file in cog_files){
+  
+  cat = str_sub(file, -5, -5)
+  
+  print('\n')
+  print(glue("Processing COG category: {cat}"))
+  
+  cog_embeddings = read_csv(file) %>% 
+    column_to_rownames("genome") %>% 
+    as.matrix()
+  
+  print("Computing the PCA")
+  pc_av_cog = prcomp(cog_embeddings,
+                     center = TRUE,
+                     scale. = TRUE)
+  print("PCA computed")
+  
+  pc_av_tb_cog = pc_av_cog %>% broom::tidy() %>%
+    filter(PC %in% c(1:10))
+  
+  var_exp_tbl_av_cog = summary(pc_av_cog)$importance %>%
+    as_tibble(rownames = "cosa") %>% 
+    select(cosa, PC1:PC20)
+
+  print("PCA tidy")
+  pc_av_tb_cog = pc_av_tb_cog %>% 
+    mutate(row = case_when(str_detect(row, "^(NT\\d{5})_\\d+") ~ str_sub(row, 1, 7),
+                           TRUE ~ row))
+  
+  pca_strains_av_cog = pc_av_tb_cog %>%
+    filter(PC %in% c(1,2)) %>% 
+    pivot_wider(names_from = PC, values_from = value, names_prefix = "PC") %>% 
+    left_join(metadata_final %>%  select(row = assembly_id_simp, phylogroup)) %>% 
+    drop_na(phylogroup)
+  
+  pca_strains_av_cog %>%
+    ggplot(aes(x = PC1, y = PC2, color = phylogroup)) +
+    geom_point(alpha = 0.6, size = 3) +
+    scale_color_manual(values = phylo_colors) +
+    theme_cowplot(14) +
+    labs(title = glue("PCA projection of strain embeddings, COG category: {cat}"),
+         subtitle = "Color by phylogroup",
+         x = glue("Principal component 1 ({round(var_exp_tbl_av_cog[2,2]*100, 2)}%)"), 
+         y = glue("Principal component 2 ({round(var_exp_tbl_av_cog[2,3]*100, 2)}%)"))
+  
+  ggsave(glue("exploration/strain_embeddings/COG_embeddings/pca_strain_embeddings_av_COG_{cat}.pdf"),
+         width = 10, height = 8)
+  ggsave(glue("exploration/strain_embeddings/COG_embeddings/pca_strain_embeddings_av_COG_{cat}.png"),
+         width = 10, height = 8)
+  
+  pca_strains_av_cog %>% 
+    write_csv(glue("exploration/strain_embeddings/COG_embeddings_tables/pca_strain_embeddings_av_COG_{cat}.csv"))
+  
+  print("\n")
+  
+}
+
+# remove large vars
+rm(cog_embeddings, pc_av_cog, pc_av_tb_cog, var_exp_tbl_av_cog, pca_strains_av_cog)
+gc()
+
+# COG embeddings permanova  -----------------------------------------------
+
+cog_files = list.files("tables/strain_embeddings_COG", 
+                       pattern = "strain_embeddings_cog_", 
+                       full.names = TRUE)
+
+cog_permanova_stats = tibble()
+
+for (file in cog_files){
+  
+  cat = str_sub(file, -5, -5)
+  
+  print(glue("Processing COG category: {cat}"))
+  
+  cog_embeddings = read_csv(file) %>% 
+    column_to_rownames("genome") %>% 
+    as.matrix()
+  
+  # check if there are NA values 
+  if (any(is.na(cog_embeddings))) {
+    stop("There are NA values in the COG embeddings matrix. Please handle them before running PERMANOVA.")
+  }
+  
+  # create a metadata table for the COG embeddings
+  cog_embeddings_meta = cog_embeddings %>% 
+    as_tibble(rownames = "genome") %>% 
+    mutate(genome = case_when(str_detect(genome, "^(NT\\d{5})_\\d+") ~ str_sub(genome, 1, 7),
+                              TRUE ~ genome)) %>% 
+    left_join(metadata_final %>% 
+                select(genome = assembly_id_simp, phylogroup)) %>% 
+    drop_na(genome) 
+  
+  # calculate distance matrix
+  dist_cog_emb = vegdist(cog_embeddings, method = "manhattan")
+  
+  grouping_variable_cog_emb = cog_embeddings_meta$phylogroup
+  
+  # Perform PERMANOVA on the COG embeddings
+  print("Performing PERMANOVA on COG embeddings...")
+  permanova_result_cog_emb <- adonis2(dist_cog_emb ~ grouping_variable_cog_emb,
+                                      data = cog_embeddings_meta,
+                                      parallel = 8,
+                                      permutations = 300)
+  
+  print("Permanova completed.")
+  cog_permanova_stats = cog_permanova_stats %>% 
+    bind_rows(broom::tidy(permanova_result_cog_emb) %>% 
+                filter(term == "Model") %>% 
+                mutate(COG_category = cat))
+  
+  print(glue("Permanova results for COG category {cat} saved."))
+  print("\n")
+  # remove the cog_embeddings and cog_embeddings_meta to free memory
+  rm(cog_embeddings, cog_embeddings_meta, dist_cog_emb, grouping_variable_cog_emb)
+  gc()
+  
+}
+
+
+
+
+## weighted average embeddings ----------------------------------------
+
+pc_w_av = prcomp(strain_embeddings_w_av,
+             center = TRUE,
+             scale. = TRUE)
+
+
+pc_w_av_tb = pc_w_av %>% broom::tidy() %>%
+  filter(PC %in% c(1:10))
+
+var_exp_tbl_w_av = summary(pc_w_av)$importance %>%
+  as_tibble(rownames = "cosa") %>% 
+  select(cosa, PC1:PC20)
+
+pc_w_av_tb = pc_w_av_tb %>% 
+  mutate(row = case_when(str_detect(row, "^(NT\\d{5})_\\d+") ~ str_sub(row, 1, 7),
+                         TRUE ~ row))
+
+pca_strains_w_av = pc_w_av_tb %>%
+  filter(PC %in% c(1,2)) %>% 
+  pivot_wider(names_from = PC, values_from = value, names_prefix = "PC") %>% 
+  left_join(metadata_final %>%  select(row = assembly_id_simp, phylogroup)) %>% 
+  drop_na(phylogroup)
+
+pca_strains_w_av %>%
+  ggplot(aes(x = PC1, y = PC2, color = phylogroup)) +
+  geom_point(alpha = 0.6, size = 3) +
+  scale_color_manual(values = phylo_colors) +
+  theme_cowplot(14) +
+  labs(title = "PCA projection of strain embeddings",
+       subtitle = "Color by phylogroup",
+       x = glue("Principal component 1 ({round(var_exp_tbl_w_av[2,2]*100, 2)}%)"), 
+       y = glue("Principal component 2 ({round(var_exp_tbl_w_av[2,3]*100, 2)}%)"))
+  
+
+pca_strains_w_av %>%
+  ggplot(aes(x = PC1, y = PC2, color = phylogroup)) +
+  geom_point(alpha = 0.6, size = 3) +
+  scale_color_manual(values = phylo_colors) +
+  theme_cowplot(14) +
+  labs(title = "PCA projection of strain embeddings",
+       subtitle = "Color by phylogroup",
+       x = glue("Principal component 1 ({round(var_exp_tbl_w_av[2,2]*100, 2)}%)"), 
+       y = glue("Principal component 2 ({round(var_exp_tbl_w_av[2,3]*100, 2)}%)")) +
+  facet_wrap(~phylogroup)
+
+
+pca_strains_w_av %>% 
+  write_csv("exploration/strain_embeddings/pca_strain_embeddings_w_av.csv")
+
+## composed plot of the 3 versions ===========================
+
+library(patchwork)
+
+version_add = pca_strains %>% 
+  ggplot(aes(x = PC1, y = PC2, color = phylogroup)) +
+  geom_point(alpha = 0.5, size = 3, show.legend = F) +
+  scale_color_manual(values = phylo_colors) +
+  theme_cowplot(14) +
+  labs(title = "Addition of embeddings",
+       subtitle = "Color by phylogroup",
+       x = glue("Principal component 1 ({round(var_exp_tbl[2,2]*100, 2)}%)"), 
+       y = glue("Principal component 2 ({round(var_exp_tbl[2,3]*100, 2)}%)"))
+
+version_av = pca_strains_av %>% 
+  ggplot(aes(x = PC1, y = PC2, color = phylogroup)) +
+  geom_point(alpha = 0.5, size = 3, show.legend = F) +
+  scale_color_manual(values = phylo_colors) +
+  theme_cowplot(14) +
+  labs(title = "Average of embeddings",
+       x = glue("Principal component 1 ({round(var_exp_tbl_av[2,2]*100, 2)}%)"), 
+       y = glue("Principal component 2 ({round(var_exp_tbl_av[2,3]*100, 2)}%)"))
+
+version_w_av = pca_strains_w_av %>%
+  ggplot(aes(x = PC1, y = PC2, color = phylogroup)) +
+  geom_point(alpha = 0.5, size = 3) +
+  scale_color_manual(values = phylo_colors) +
+  theme_cowplot(14) +
+  labs(title = "Weighted average of embeddings",
+       x = glue("Principal component 1 ({round(var_exp_tbl_w_av[2,2]*100, 2)}%)"), 
+       y = glue("Principal component 2 ({round(var_exp_tbl_w_av[2,3]*100, 2)}%)"))
+
+# patchwork
+
+combined_plot = version_add + version_av + version_w_av
+combined_plot
+
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_versions.pdf",
+       width = 16, height = 7)
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_versions.png",
+       width = 16, height = 7)
+
+
+# IMPORTANT INFO ABOUT STRAIN EMBEDDINGS ------------------
+# I have selected the average method for the embeddings and adapted the 
+# analysis below
+# compose plot of PC1 and PC2 with phylogroups -------
+
+# pca_strains = pc_tb %>% 
+#   filter(PC %in% c(1,2)) %>% 
+#   pivot_wider(names_from = PC, values_from = value, names_prefix = "PC") %>% 
+#   left_join(metadata_final %>%  select(row = assembly_id_simp, phylogroup)) %>% 
+#   drop_na(phylogroup) 
 
 # Define the desired order of phylogroups
 desired_phylogroup_order <- c("A", "B1", "C", 
@@ -2751,7 +3786,7 @@ desired_phylogroup_order <- c("A", "B1", "C",
 phylogroups_to_plot <- desired_phylogroup_order # Use the ordered vector
 
 plots_list <- lapply(phylogroups_to_plot, function(target_phylogroup) {
-  pca_strains %>%
+  pca_strains_av %>%
     mutate(highlight = ifelse(phylogroup == target_phylogroup, phylogroup, "other")) %>%
     ggplot(aes(x = PC1, y = PC2)) +
     geom_point(data = . %>% filter(highlight == "other"), color = "grey", alpha = 0.6, size=3) +
@@ -2788,7 +3823,7 @@ ggsave("exploration/strain_embeddings/pca_strain_embeddings_facet.png",
 
 ### boxplot of PC1 and PC2 per phylogroup ----------------------------
 
-pca_strains_long = pc_tb %>% 
+pca_strains_long = pc_av_tb %>% 
   filter(PC %in% c(1,2)) %>% 
   pivot_wider(names_from = PC, values_from = value, names_prefix = "PC") %>% 
   left_join(metadata_final %>%  select(row = assembly_id_simp, phylogroup)) %>% 
@@ -2841,10 +3876,9 @@ centroids %>%
                  height = 0.1) +
   geom_point(size = 5, shape = 21) +
   scale_fill_manual(values = phylo_colors) +
-  labs(title = "PCA projection of strain embeddings",
-       subtitle = "Centroids per phylogroup",
-       x = glue("Principal component 1 ({round(var_exp_tbl[2,2]*100, 2)}%)"), 
-       y = glue("Principal component 2 ({round(var_exp_tbl[2,3]*100, 2)}%)")) +
+  labs(
+       x = glue("Principal component 1 ({round(var_exp_tbl_av[2,2]*100, 2)}%)"), 
+       y = glue("Principal component 2 ({round(var_exp_tbl_av[2,3]*100, 2)}%)")) +
   theme_cowplot(14)
 
 ggsave("exploration/strain_embeddings/pca_strain_embeddings_centroids.pdf",
@@ -2859,7 +3893,7 @@ ggsave("exploration/strain_embeddings/pca_strain_embeddings_centroids.png",
 
 library(vegan)
 
-pca_strains_10 = pc_tb %>% 
+pca_strains_10 = pc_av_tb %>% 
   filter(PC %in% c(1:10)) %>% 
   pivot_wider(names_from = PC, values_from = value, names_prefix = "PC") %>% 
   left_join(metadata_final %>%  select(row = assembly_id_simp, phylogroup)) %>% 
@@ -2886,8 +3920,8 @@ pca_matrix <- pca_strains_10 %>% select(PC1:PC2)
 library(RVAideMemoire)
 pairwise_pca_strains = pairwise.perm.manova(pca_matrix,
                                             pca_strains_10$phylogroup, 
-                                            test = "Pillai",
-                                            nperm = 500)
+                                            test = "Wilks",
+                                            nperm = 100)
 
 pairwise_pca_strains
 
@@ -2899,12 +3933,12 @@ pairwise_pca_strains
 ### Lab strains representation ===========
 
 metadata_final %>% 
-  filter(str_detect(assembly_id_simp, "NT12"))
+  filter(str_detect(assembly_id_simp, "NT12") | str_detect(assembly_id_simp, "AUS"))
 
-pca_strains %>% 
-  filter(str_detect(row, "NT12")) %>% 
+pca_strains_av %>% 
+  filter(str_detect(row, "NT12") | str_detect(row, "AUS")) %>% 
   ggplot(aes(x = PC1, y = PC2, color = phylogroup)) +
-  geom_point(alpha = 0.6, size = 3) +
+  geom_point(alpha = 0.8, size = 3) +
   scale_color_manual(values = phylo_colors) +
   theme_cowplot(14) +
   labs(title = "PCA projection of strain embeddings",
@@ -2913,6 +3947,10 @@ pca_strains %>%
        y = glue("Principal component 2 ({round(var_exp_tbl[2,3]*100, 2)}%)"))
 
 
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_lab_strains.pdf",
+       width = 8, height = 6)
+ggsave("exploration/strain_embeddings/pca_strain_embeddings_lab_strains.png",
+       width = 8, height = 6)
 
 
 
@@ -2928,7 +3966,7 @@ min_dist = c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
 for (n in n_neigh) {
   for (d in min_dist) {
     print(glue::glue("Running UMAP with n: {n}, d: {d}"))
-    umap_strain = umap(strain_embeddings, 
+    umap_strain = umap(strain_embeddings_av, 
                        n_neighbors = n, 
                        min_dist = d, 
                        n_components = 2)
@@ -2957,7 +3995,7 @@ for (n in n_neigh) {
 }
 
 
-umap_strain = umap(strain_embeddings, 
+umap_strain = umap(strain_embeddings_av, 
                    n_neighbors = 30, 
                    min_dist = 0.4, 
                    n_components = 2)
@@ -2973,10 +4011,13 @@ umap_strain %>%
   scale_color_manual(values = phylo_colors) +
   theme_cowplot(14) 
 
-ggsave("exploration/strain_embeddings/umap_strain_embeddings.pdf",
+ggsave("exploration/strain_embeddings/umap_strain_embeddings_av.pdf",
        width = 8, height = 6)
-ggsave("exploration/strain_embeddings/umap_strain_embeddings.png",
+ggsave("exploration/strain_embeddings/umap_strain_embeddings_av.png",
        width = 8, height = 6)
+
+umap_strain %>% 
+  write_csv("exploration/strain_embeddings/umap_strain_embeddings_av.csv")
 
 # with 2d density plots
 umap_strain %>%
@@ -3095,8 +4136,10 @@ annotation_summary_stats = gene_pa_long_count %>%
 # annotated genes per method per strain
 library(GGally)
 ggpairs(annotation_summary_stats %>% 
-          select(eggnog_annotated, interpro_annotated, 
-                 proteinfer_annotated, gopredsim_annotated),
+          select(eggnog = eggnog_annotated, 
+                 interpro = interpro_annotated, 
+                 proteinfer = proteinfer_annotated, 
+                 gopredsim = gopredsim_annotated),
         
         # set alpha to 0.3
         lower = list(continuous = wrap("points", alpha = 0.3)),
@@ -3107,14 +4150,16 @@ ggpairs(annotation_summary_stats %>%
         )
 
 ggsave("exploration/annotated_genes_per_method.pdf", 
-       width = 12, height = 12)
+       width = 8, height = 8)
 ggsave("exploration/annotated_genes_per_method.png", 
-       width = 12, height = 12)
+       width = 8, height = 8)
 
 # unnanotated genes 
 ggpairs(annotation_summary_stats %>% 
-          select(eggnog_unnanotated, interpro_unnanotated, 
-                 proteinfer_unnanotated, gopredsim_unnanotated),
+          select(eggnog = eggnog_annotated, 
+                 interpro = interpro_annotated, 
+                 proteinfer = proteinfer_annotated, 
+                 gopredsim = gopredsim_annotated),
         
         # set alpha to 0.3
         lower = list(continuous = wrap("points", alpha = 0.3)),
@@ -3125,9 +4170,9 @@ ggpairs(annotation_summary_stats %>%
 )
 
 ggsave("exploration/unnanotated_genes_per_method.pdf", 
-       width = 12, height = 12)
+       width = 8, height = 8)
 ggsave("exploration/unnanotated_genes_per_method.png",
-       width = 12, height = 12)
+       width = 8, height = 8)
 
 
 
@@ -3158,7 +4203,7 @@ annotation_summary_stats_boxplots %>%
 # boxplots
 annotation_summary_stats_boxplots %>% 
   ggplot(aes(x = method, y = value, fill = annotated)) +
-  geom_boxplot(outlier.shape = NULL) +
+  geom_boxplot(outlier.shape = NULL, show.legend = F) +
   scale_fill_manual(values = c("grey", "black")) +
   theme_cowplot(14) +
   labs(
@@ -3178,19 +4223,77 @@ annotation_summary_stats_boxplots %>%
                                     "Proteinfer",
                                     "goPredSim"))) %>% 
   ggplot(aes(x = annotated, y = value, fill = method)) +
-  geom_boxplot(outlier.shape = NULL) +
+  # geom_boxplot(outlier.shape = NULL, show.legend = F) +
+  geom_violin(trim = F,
+              scale = "width",
+              show.legend = F) +
+  # geom_boxplot(width=0.1, fill = "white", outlier.shape = NULL) +
   scale_fill_manual(values = colors_methods) +
   theme_cowplot(14) +
   labs(
-       x = "Method", 
+       x = NULL, 
        y = "Number of genes per strain") +
   facet_wrap(~method, ncol = 4) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ggsave("exploration/annotated_genes_per_method_boxplots.pdf", 
-       width = 10, height = 7)
+       width = 7, height = 4.5)
 ggsave("exploration/annotated_genes_per_method_boxplots.png",
        width = 10, height = 7)
+
+annotation_summary_stats_boxplots %>% 
+  mutate(method = str_replace(method, "interpro", "Interproscan"),
+         method = str_replace(method, "eggnog", "eggNOG"),
+         method = str_replace(method, "proteinfer", "Proteinfer"),
+         method = str_replace(method, "gopredsim", "goPredSim")) %>% 
+  group_by(annotated) %>% 
+  anova_test(value ~ method, detailed = TRUE)
+
+
+annotation_summary_stats_boxplots %>% 
+  mutate(method = str_replace(method, "interpro", "Interproscan"),
+         method = str_replace(method, "eggnog", "eggNOG"),
+         method = str_replace(method, "proteinfer", "Proteinfer"),
+         method = str_replace(method, "gopredsim", "goPredSim")) %>% 
+  group_by(annotated) %>% 
+  t_test(
+    value ~ method,
+    p.adjust.method = "fdr",
+    detailed = TRUE
+  )
+
+annotation_summary_stats_boxplots_sum = annotation_summary_stats_boxplots %>% 
+  mutate(method = str_replace(method, "interpro", "Interproscan"),
+         method = str_replace(method, "eggnog", "eggNOG"),
+         method = str_replace(method, "proteinfer", "Proteinfer"),
+         method = str_replace(method, "gopredsim", "goPredSim")) %>% 
+  group_by(method, annotated) %>% 
+  summarise(mean = mean(value)) 
+
+annotation_summary_stats_boxplots_sum %>% 
+  arrange(desc(mean), method)
+
+
+annotation_summary_stats_boxplots %>% 
+  mutate(method = str_replace(method, "interpro", "Interproscan"),
+         method = str_replace(method, "eggnog", "eggNOG"),
+         method = str_replace(method, "proteinfer", "Proteinfer"),
+         method = str_replace(method, "gopredsim", "goPredSim")) %>% 
+  write_csv("tables/annotation_summary_stats_boxplots_long_FINAL.csv")
+
+## stats 
+annotation_summary_stats_boxplots  %>%
+  mutate(method = as.factor(method),
+         annotated = as.factor(annotated)) %>%
+  group_by(annotated) %>%
+  t_test(value ~ method, detailed = TRUE) 
+
+annotation_summary_stats_boxplots  %>%
+  mutate(method = as.factor(method),
+         annotated = as.factor(annotated)) %>%
+  # 2-way anova
+  anova_test(value ~ method * annotated)
+
 
 
 ## calculate with core, shell and cloud genomes
@@ -3254,3 +4357,216 @@ annotation_summary_stats_group_boxplots %>%
        x = "Method", 
        y = "Number of genes per strain") +
   facet_wrap(~gene_group)
+
+
+
+metadata_final %>% 
+  count(phylogroup) %>% 
+  filter(phylogroup != "U") %>% 
+  ggplot(aes(x = fct_reorder(phylogroup, n), 
+             y = n, fill = phylogroup)) +
+  geom_bar(stat = "identity", width = 1) +
+  scale_fill_manual(values = phylo_colors) +
+  theme_cowplot(7) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  labs(
+    x = NULL,
+    y = "Number of strains") +
+  theme(legend.position = "none") +
+  coord_flip()
+
+ggsave("exploration/strain_counts_per_phylogroup.pdf",
+       width = 2, height = 4)
+
+
+
+
+
+# phylogroup correlation --------------------------------------------------
+
+lab_phylos = metadata_final %>% 
+  filter(str_detect(assembly_id_simp, "NT12") | str_detect(assembly_id_simp, "AUS")) %>% 
+  group_by(phylogroup) %>% 
+  count()
+
+
+nonlab_phylos = metadata_final %>% 
+  filter(!str_detect(assembly_id_simp, "NT12") | str_detect(assembly_id_simp, "AUS")) %>% 
+  group_by(phylogroup) %>% 
+  count()
+
+phylo_comparison = lab_phylos %>%
+  left_join(nonlab_phylos, by = "phylogroup", suffix = c("_lab", "_nonlab")) %>% 
+  mutate(n_lab = replace_na(n_lab, 0),
+         n_nonlab = replace_na(n_nonlab, 0),
+         total = n_lab + n_nonlab,
+         prop_lab = n_lab / total,
+         prop_nonlab = n_nonlab / total)
+
+phylo_comparison %>% 
+  ggplot(aes(x = n_lab, y = n_nonlab, 
+             label = phylogroup)) +
+  geom_point(size = 4, 
+             shape = 21, 
+             color = 'black',
+             aes(fill = phylogroup)) +
+  geom_text(vjust = -1) +
+  scale_fill_manual(values = phylo_colors) +
+  ggpubr::stat_cor(method = "pearson",
+                         label.x.npc = "left",
+                         label.ynpc = "top",
+                         size = 6) +
+  geom_smooth(method = "lm", 
+              se = FALSE) +
+  theme_cowplot(14) 
+
+ggsave("exploration/lab_vs_nonlab_phylogroup_counts.pdf",
+       width = 6, height = 5)
+
+
+
+phylo_comparison %>% 
+  select(phylogroup:total) %>% 
+  write_csv("tables/lab_vs_nonlab_phylogroup_counts.csv")
+
+
+
+
+
+
+# strain-strain similarity ------------------------------------------------
+library(Matrix)
+
+# read gene pa
+gene_pa = read_delim("data/panaroo_results/gene_presence_absence.Rtab", 
+                     delim = "\t", escape_double = FALSE, 
+                     trim_ws = TRUE)
+
+
+genes_matrix = as.matrix(gene_pa %>% select(-Gene))
+rownames(genes_matrix) = gene_pa$Gene
+mode(genes_matrix) = "integer"
+dim(genes_matrix)
+
+# calculate intersection (shared genes)
+# crossprod(X) is equivalent to t(X) %*% X
+# Result: A matrix where cell [i,j] is the count of genes present in BOTH strain i and j
+# THIS TAKES A LONG TIME
+intersection_matrix <- crossprod(genes_matrix)
+head(intersection_matrix)
+
+# 3. Calculate "Union" (Total unique genes in the pair)
+# First, get the total gene count per strain (the diagonal of the intersection matrix)
+genes_per_strain <- diag(intersection_matrix)
+
+# Calculate sum of gene counts for every pair (|A| + |B|)
+# 'outer' applies the sum function to every combination of the vector
+sum_of_sizes <- outer(genes_per_strain, genes_per_strain, "+")
+
+# The Union is: |A| + |B| - |A intersection B|
+union_matrix <- sum_of_sizes - intersection_matrix
+
+# 4. Calculate Jaccard Similarity
+# Formula: Intersection / Union
+jaccard_similarity <- intersection_matrix / union_matrix
+
+# View a corner of the result
+jaccard_similarity[1:5, 1:5]
+
+min(jaccard_similarity)
+
+
+# free up some memory
+rm(gene_pa)
+
+
+# tibble of jaccard_similarity
+jaccard_similarity_tbl = jaccard_similarity %>% 
+  as_tibble(rownames = "strain") %>% 
+  pivot_longer(!strain, names_to = "strain_2", values_to = "similarity") %>% 
+  filter(similarity < 1)
+
+
+jaccard_similarity_tbl %>% 
+  slice_max(similarity, n = 10) %>% view
+
+jaccard_similarity_tbl %>% 
+  filter(strain != "NT12009_154.fna") %>% 
+  filter(strain_2 != "NT12009_154.fna") %>% 
+  slice_min(similarity, n = 300) %>% view
+
+
+
+strain_pa_lab =  jaccard_similarity_tbl %>% 
+  distinct(strain) %>% 
+  filter(str_detect(strain, "NT|AUS")) %>% 
+  pull(strain)
+
+jaccard_similarity_tbl %>% 
+  filter(strain %in% strain_pa_lab) %>% 
+  filter(strain_2 %in% strain_pa_lab) %>% 
+  filter(strain != "NT12009_154.fna") %>% 
+  filter(strain_2 != "NT12009_154.fna") %>% 
+  view
+
+
+
+jaccard_similarity_tbl %>% 
+  filter(strain %in% strain_pa_lab) %>% 
+  filter(strain_2 %in% strain_pa_lab) %>% 
+  filter(strain != "NT12009_154.fna") %>% 
+  filter(strain_2 != "NT12009_154.fna") %>% 
+  ggplot(aes(similarity)) +
+  geom_histogram(binwidth = 0.01) 
+
+
+jaccard_similarity_tbl %>% 
+  filter(!strain %in% strain_pa_lab) %>% 
+  filter(!strain_2 %in% strain_pa_lab) %>% 
+  # filter(strain != "NT12009_154.fna") %>% 
+  # filter(strain_2 != "NT12009_154.fna") %>% 
+  ggplot(aes(similarity)) +
+  geom_histogram(binwidth = 0.01) 
+
+rm(intersection_matrix)
+
+jaccard_similarity_tbl %>% 
+  filter(strain != "NT12009_154.fna") %>%
+  filter(strain_2 != "NT12009_154.fna") %>%
+  mutate(comparison = case_when(strain %in% strain_pa_lab & strain_2 %in% strain_pa_lab ~ "Cabreiro collection",
+                                TRUE ~ "NCBI collection")) %>% 
+  ggplot(aes(similarity)) +
+  geom_density(aes(color = comparison)) +
+  labs(x = "Jaccard similarity between strains",
+       y = "Density",
+       color = "Comparison") +
+  theme_cowplot(14, font_family = "Arial")
+  
+ggsave("exploration/Jaccard_similarity_lab_vs_NCBI.pdf",
+       width = 5, 
+       height = 4)
+
+
+jaccard_similarity_sumstats = jaccard_similarity_tbl %>% 
+  filter(strain != "NT12009_154.fna") %>%
+  filter(strain_2 != "NT12009_154.fna") %>%
+  mutate(comparison = case_when(strain %in% strain_pa_lab & strain_2 %in% strain_pa_lab ~ "Cabreiro collection",
+                                TRUE ~ "NCBI collection")) %>% 
+  group_by(comparison) %>% 
+  summarise(med_sim = median(similarity),
+            mad_sim = mad(similarity),
+            av_sim = mean(similarity),
+            sd_sim = sd(similarity))
+
+jaccard_similarity_sumstats %>% 
+  write_csv("tables/jaccard_similarity_summary_stats.csv")
+
+
+
+jaccard_similarity_tbl %>% 
+  filter(strain != "NT12009_154.fna") %>%
+  filter(strain_2 != "NT12009_154.fna") %>%
+  mutate(comparison = case_when(strain %in% strain_pa_lab & strain_2 %in% strain_pa_lab ~ "Cabreiro collection",
+                                TRUE ~ "NCBI collection")) %>% 
+  left_join()
+
